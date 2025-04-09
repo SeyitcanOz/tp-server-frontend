@@ -1,4 +1,3 @@
-// src/lib/services/api.ts
 import axios from 'axios';
 import type { AxiosInstance } from 'axios';
 import { browser } from '$app/environment';
@@ -17,40 +16,41 @@ const api: AxiosInstance = axios.create({
   }
 });
 
-// Add request interceptor to add auth token to requests
-api.interceptors.request.use(
-  (config) => {
-    // If the token exists, add it to the headers
-    const tokenValue = get(token);
-    if (tokenValue) {
-      config.headers.Authorization = `Bearer ${tokenValue}`;
+// Only setup interceptors in the browser environment
+if (browser) {
+  // Add request interceptor to add auth token to requests
+  api.interceptors.request.use(
+    (config) => {
+      // If the token exists, add it to the headers
+      const tokenValue = get(token);
+      if (tokenValue) {
+        config.headers.Authorization = `Bearer ${tokenValue}`;
+      }
+      return config;
+    },
+    (error) => {
+      return Promise.reject(error);
     }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
+  );
 
-// Add response interceptor to handle auth errors
-api.interceptors.response.use(
-  (response) => {
-    return response;
-  },
-  (error) => {
-    // Handle unauthorized errors (expired token or not authenticated)
-    if (error.response && error.response.status === 401) {
-      // Clear token from store
-      token.set(null);
-      
-      if (browser) {
+  // Add response interceptor to handle auth errors
+  api.interceptors.response.use(
+    (response) => {
+      return response;
+    },
+    (error) => {
+      // Handle unauthorized errors (expired token or not authenticated)
+      if (error.response && error.response.status === 401) {
+        // Clear token from store
+        token.set(null);
+        
         // Redirect to login page
         goto('/login');
       }
+      
+      return Promise.reject(error);
     }
-    
-    return Promise.reject(error);
-  }
-);
+  );
+}
 
 export default api;

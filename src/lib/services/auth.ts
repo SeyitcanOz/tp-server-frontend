@@ -1,6 +1,7 @@
 import api from './api';
 import { token, user } from '../stores/auth';
 import type { LoginRequest, AuthResponse, User } from '../types/auth';
+import { browser } from '$app/environment';
 
 /**
  * User authentication service
@@ -37,7 +38,9 @@ export const authService = {
    * Check if user is authenticated
    */
   isAuthenticated(): boolean {
-    // Get token from store - this will work client-side only
+    // Only access localStorage in browser environment
+    if (!browser) return false;
+    
     const tokenValue = localStorage.getItem('token');
     return !!tokenValue;
   },
@@ -47,6 +50,9 @@ export const authService = {
    * @param role Role to check
    */
   hasRole(role: string): boolean {
+    // Only access localStorage in browser environment
+    if (!browser) return false;
+    
     const userData = localStorage.getItem('user');
     if (!userData) return false;
     
