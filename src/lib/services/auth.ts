@@ -1,6 +1,6 @@
 import api from './api';
-import { token, user } from '$lib/stores/auth';
-import type { LoginRequest, AuthResponse } from '$lib/types/auth';
+import { token, user } from '../stores/auth';
+import type { LoginRequest, AuthResponse, User } from '../types/auth';
 
 /**
  * User authentication service
@@ -51,7 +51,7 @@ export const authService = {
     if (!userData) return false;
     
     try {
-      const parsedUser = JSON.parse(userData);
+      const parsedUser = JSON.parse(userData) as User;
       return parsedUser.roles && parsedUser.roles.includes(role);
     } catch {
       return false;

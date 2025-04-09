@@ -1,8 +1,10 @@
-import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+// src/lib/services/api.ts
+import axios from 'axios';
+import type { AxiosInstance } from 'axios';
 import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
-import { token } from '$lib/stores/auth';
 import { get } from 'svelte/store';
+import { token } from '../stores/auth';
 
 // Default API configuration
 const API_URL = 'http://localhost:5220'; // Change this to match your TPServer API URL
