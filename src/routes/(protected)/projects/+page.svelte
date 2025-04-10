@@ -49,28 +49,29 @@
   
   // Function to load user details for project creators
   async function loadUserDetails(userIds: string[]) {
-  try {
-    // Filter out IDs we already have info for
-    const missingIds = userIds.filter(id => !userMap[id]);
-    
-    if (missingIds.length === 0) return;
-    
-    // In a real application, you'd have an endpoint to fetch user details by IDs
-    // For demonstration, we'll assume we have the endpoint /api/users/batch
-    const response = await api.post('/api/users/batch', { userIds: missingIds });
-    
-    const users = response.data;
-    
-    // Update the userMap with new user data
-    users.forEach((userData: {id: string, username: string}) => {
-      userMap[userData.id] = userData.username;
-    });
-  } catch (error) {
-    console.error('Error loading user details:', error);
-    // If we can't load user details, use placeholder
-    userIds.forEach(id => {
-      if (!userMap[id]) userMap[id] = 'Unknown User';
-    });
+    try {
+      // Filter out IDs we already have info for
+      const missingIds = userIds.filter(id => !userMap[id]);
+      
+      if (missingIds.length === 0) return;
+      
+      // In a real application, you'd have an endpoint to fetch user details by IDs
+      // For demonstration, we'll assume we have the endpoint /api/users/batch
+      const response = await api.post('/api/users/batch', { userIds: missingIds });
+      
+      const users = response.data;
+      
+      // Update the userMap with new user data
+      users.forEach((userData: {id: string, username: string}) => {
+        userMap[userData.id] = userData.username;
+      });
+    } catch (error) {
+      console.error('Error loading user details:', error);
+      // If we can't load user details, use placeholder
+      userIds.forEach(id => {
+        if (!userMap[id]) userMap[id] = 'Unknown User';
+      });
+    }
   }
   
   function handleSearch() {
@@ -93,7 +94,7 @@
     });
   }
   
-  // Check if current user is admin
+  // Check if current user is admin - can be used in the template with isAdmin
   $: isAdmin = $user?.roles.includes('Admin');
   
   onMount(() => {
@@ -122,7 +123,7 @@
         placeholder="Search projects..." 
         on:keyup={(e) => e.key === 'Enter' && handleSearch()}
       />
-      <button class="search-button" on:click={handleSearch}>
+      <button class="search-button" on:click={handleSearch} aria-label="Search">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="11" cy="11" r="8"></circle>
           <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
