@@ -20,7 +20,7 @@ const config = {
      * Default pagination settings
      */
     pagination: {
-      defaultPageSize: 10,
+      defaultPageSize: 20,
       pageSizeOptions: [5, 10, 25, 50]
     }
   };

@@ -5,11 +5,13 @@
   import userService from '$lib/services/user';
   import type { PagedResponse, ProjectSummary } from '$lib/types/project';
   
+  // Variables for filtering
   let projects: ProjectSummary[] = [];
+  let allProjects: ProjectSummary[] = []; // Store all projects for client-side filtering
   let isLoading = true;
   let error: string | null = null;
   let currentPage = 1;
-  let pageSize = 10;
+  let pageSize = 20;
   let totalPages = 1;
   let totalCount = 0;
   let searchQuery = '';
@@ -17,7 +19,88 @@
   let viewMode: 'grid' | 'list' = 'grid';
   let sortOrder: 'name' | 'updated' | 'version' = 'updated';
   
-  // Function to load projects
+  // Admin-specific properties
+  let userFilter: string | null = null; // For admin to filter by user
+  let allUsers: {id: string, username: string}[] = []; // List of users for admin to filter by
+  let isLoadingUsers = false;
+  
+  // Client-side search function
+  function filterProjects(projects: ProjectSummary[], query: string): ProjectSummary[] {
+    if (!query) return projects;
+    
+    const lowerQuery = query.toLowerCase();
+    return projects.filter(project => 
+      project.projectName.toLowerCase().includes(lowerQuery) || 
+      project.modellingType.toLowerCase().includes(lowerQuery)
+    );
+  }
+
+  // Client-side sort function
+  function sortProjects(projects: ProjectSummary[], order: 'name' | 'updated' | 'version'): ProjectSummary[] {
+    return [...projects].sort((a, b) => {
+      if (order === 'name') {
+        return a.projectName.localeCompare(b.projectName);
+      } else if (order === 'updated') {
+        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+      } else { // version
+        return b.currentVersion - a.currentVersion;
+      }
+    });
+  }
+
+  // Apply client-side filtering and sorting
+  function applyClientSideFilters() {
+    // Start with all projects (or filtered by user if applicable)
+    let filteredProjects = [...allProjects];
+    
+    // Apply search filter
+    if (searchQuery) {
+      filteredProjects = filterProjects(filteredProjects, searchQuery);
+    }
+    
+    // Apply sorting
+    filteredProjects = sortProjects(filteredProjects, sortOrder);
+    
+    // Update pagination info
+    totalCount = filteredProjects.length;
+    totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+    currentPage = Math.min(currentPage, totalPages);
+    
+    // Apply pagination
+    const startIndex = (currentPage - 1) * pageSize;
+    projects = filteredProjects.slice(startIndex, startIndex + pageSize);
+  }
+  
+  // Function to load all users for admin filter dropdown
+  async function loadAllUsers() {
+    if (!$user?.roles?.includes('Admin')) return;
+    
+    isLoadingUsers = true;
+    try {
+      // In a real app, you'd have an endpoint to get all users
+      // Since we don't have one in the provided code, we'll create a workaround
+      // This would be replaced with an actual API call like:
+      // const response = await api.get('/api/users');
+      // allUsers = response.data;
+      
+      // For now, let's just add the current user
+      if ($user) {
+        allUsers = [{
+          id: $user.id,
+          username: $user.username
+        }];
+      }
+      
+      // We'll add any project owners we find while loading projects
+      // This is a workaround since we don't have a proper user list endpoint
+    } catch (err) {
+      console.error('Error loading users:', err);
+    } finally {
+      isLoadingUsers = false;
+    }
+  }
+
+  // Function to load projects with search, sort, and filter
   async function loadProjects() {
     isLoading = true;
     error = null;
@@ -34,7 +117,12 @@
         params.search = searchQuery;
       }
       
-      // We need to map our sort values to what the API expects
+      // Add userId parameter if admin user has selected a filter
+      if ($user?.roles?.includes('Admin') && userFilter) {
+        params.userId = userFilter;
+      }
+      
+      // Map our sort values to what the API expects
       if (sortOrder === 'name') {
         params.sortBy = 'projectName';
         params.sortDirection = 'asc';
@@ -51,6 +139,12 @@
         params: params
       });
       
+      // Store all projects for client-side filtering
+      // For a real app, you might need to handle larger datasets differently
+      if (!searchQuery && params.pageSize >= 100) {
+        allProjects = response.data.items;
+      }
+      
       projects = response.data.items;
       totalPages = response.data.totalPages;
       totalCount = response.data.totalCount;
@@ -58,13 +152,63 @@
       // Collect all unique creator IDs
       const creatorIds = [...new Set(projects.map(p => p.createdBy))];
       
-      // Load user details for all creators
-      await loadUserDetails(creatorIds);
+      // For admin users, add any new project creators to the user filter dropdown
+      if ($user?.roles?.includes('Admin')) {
+        await loadUserDetails(creatorIds);
+        
+        // Add any new users to the allUsers array if they're not already there
+        creatorIds.forEach(id => {
+          if (!allUsers.some(u => u.id === id) && userMap[id]) {
+            allUsers.push({
+              id: id,
+              username: userMap[id]
+            });
+          }
+        });
+      } else {
+        // For non-admin users, just load the user details for display
+        await loadUserDetails(creatorIds);
+      }
+      
+      // If we need client-side filtering, load all projects
+      if (searchQuery && allProjects.length === 0) {
+        await loadAllProjectsForFiltering();
+      }
     } catch (err) {
       console.error('Error fetching projects:', err);
       error = 'Failed to load projects. Please try again.';
     } finally {
       isLoading = false;
+    }
+  }
+  
+  // Function to load all projects for client-side filtering
+  async function loadAllProjectsForFiltering() {
+    try {
+      // Only load all projects if we haven't done so already
+      if (allProjects.length === 0) {
+        const params: Record<string, any> = {
+          pageNumber: 1,
+          pageSize: 100 // Get a larger number of projects
+        };
+        
+        // Add userId parameter if admin user has selected a filter
+        if ($user?.roles?.includes('Admin') && userFilter) {
+          params.userId = userFilter;
+        }
+        
+        const response = await api.get<PagedResponse<ProjectSummary>>('/api/projects', {
+          params: params
+        });
+        
+        allProjects = response.data.items;
+        
+        // Immediately apply client-side filtering
+        applyClientSideFilters();
+      }
+    } catch (err) {
+      console.error('Error loading all projects for filtering:', err);
+      // Fall back to API filtering if this fails
     }
   }
   
@@ -77,7 +221,7 @@
       if (missingIds.length === 0) return;
       
       // Check if the current user is an admin
-      const isAdmin = $user?.roles.includes('Admin');
+      const isAdmin = $user?.roles?.includes('Admin') || false;
       
       if (isAdmin) {
         // If admin, load all users individually
@@ -126,33 +270,72 @@
       });
     }
   }
-  
+
+  // Function to handle search with client-side filtering
   function handleSearch() {
-    currentPage = 1; // Reset to first page when searching
-    loadProjects();
-  }
-  
-  function clearSearch() {
-    searchQuery = '';
-    loadProjects();
-  }
-  
-  function changePage(newPage: number) {
-    if (newPage >= 1 && newPage <= totalPages) {
-      currentPage = newPage;
-      loadProjects();
+    // Try API search first if available, otherwise use client-side filtering
+    if (allProjects.length > 0) {
+      currentPage = 1;  // Reset to first page when searching
+      applyClientSideFilters();
+    } else {
+      currentPage = 1;  // Reset to first page when searching
+      loadProjects();   // Fall back to API search
     }
   }
-  
+
+  // Function to clear search with client-side filtering
+  function clearSearch() {
+    searchQuery = '';
+    currentPage = 1; // Reset to first page
+    
+    // If we have all projects loaded, just apply filters without API call
+    if (allProjects.length > 0) {
+      applyClientSideFilters();
+    } else {
+      loadProjects(); // Fall back to API
+    }
+  }
+
+  function setUserFilter(userId: string | null) {
+    userFilter = userId;
+    currentPage = 1; // Reset to first page when changing filter
+    
+    // Reset allProjects when changing user filter to force reload
+    allProjects = [];
+    
+    loadProjects();
+  }
+
+  // Function to change sort order with client-side filtering
   function setSortOrder(order: 'name' | 'updated' | 'version') {
     if (sortOrder !== order) {
       sortOrder = order;
-      loadProjects();
+      currentPage = 1; // Reset to first page when changing sort
+      
+      // If we have all projects loaded, just apply filters without API call
+      if (allProjects.length > 0) {
+        applyClientSideFilters();
+      } else {
+        loadProjects(); // Fall back to API
+      }
     }
   }
   
   function setViewMode(mode: 'grid' | 'list') {
     viewMode = mode;
+  }
+  
+  function changePage(newPage: number) {
+    if (newPage >= 1 && newPage <= totalPages) {
+      currentPage = newPage;
+      
+      // If we have all projects loaded, just apply filters without API call
+      if (allProjects.length > 0) {
+        applyClientSideFilters();
+      } else {
+        loadProjects();
+      }
+    }
   }
   
   function formatDate(dateString: string): string {
@@ -218,9 +401,15 @@
   }
   
   // Check if current user is admin (for template usage)
-  $: isAdmin = $user?.roles.includes('Admin');
+  $: isAdmin = $user?.roles?.includes('Admin') || false;
   
   onMount(() => {
+    // If admin, load users for filter dropdown
+    if ($user?.roles?.includes('Admin')) {
+      loadAllUsers();
+    }
+    
+    // Initial load of projects
     loadProjects();
     
     // Check if the user prefers grid or list from localStorage
@@ -273,24 +462,44 @@
 
 <div class="container projects-container">
   <div class="toolbar">
-    <div class="search-box">
-      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="11" cy="11" r="8"></circle>
-        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-      </svg>
-      <input 
-        type="text" 
-        bind:value={searchQuery} 
-        placeholder="Search projects..." 
-        on:keyup={(e) => e.key === 'Enter' && handleSearch()}
-      />
-      {#if searchQuery}
-        <button class="clear-search" on:click={clearSearch}>
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
+    <div class="toolbar-left">
+      <div class="search-box">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input 
+          type="text" 
+          bind:value={searchQuery} 
+          placeholder="Search projects..." 
+          on:keyup={(e) => e.key === 'Enter' && handleSearch()}
+        />
+        {#if searchQuery}
+          <button class="clear-search" on:click={clearSearch} aria-label="Clear search">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        {/if}
+      </div>
+      
+      <!-- User filter dropdown for admin users -->
+      {#if isAdmin}
+        <div class="user-filter">
+          <label for="user-filter">Filter by User:</label>
+          <select 
+            id="user-filter" 
+            on:change={(e) => setUserFilter((e.target as HTMLSelectElement).value || null)}
+            value={userFilter || ""}
+          >
+            <option value="">All Users</option>
+            {#if $user}<option value={$user.id}>My Projects</option>{/if}
+            {#each allUsers.filter(u => $user && u.id !== $user.id) as userOption}
+              <option value={userOption.id}>{userOption.username}</option>
+            {/each}
+          </select>
+        </div>
       {/if}
     </div>
     
@@ -309,7 +518,7 @@
           class:active={sortOrder === 'updated'}
           on:click={() => setSortOrder('updated')}
         >
-          Last Updated
+          Updated
         </button>
         <button 
           class="sort-button" 
@@ -392,7 +601,6 @@
           <div class="project-card" class:is-owner={isOwnedByCurrentUser(project.createdBy)}>
             <div class="project-header">
               <div class="model-type" style="--model-color: {getModelTypeColor(project.modellingType)}">
-                <span class="material-icons model-icon">{getModelTypeIcon(project.modellingType)}</span>
                 <span class="type-label">{project.modellingType}</span>
               </div>
               <div class="version-badge">v{project.currentVersion}</div>
@@ -424,7 +632,7 @@
                 View Project
               </a>
               <div class="action-dropdown">
-                <button class="action-button icon">
+                <button class="action-button icon" aria-label="More options">
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="12" cy="12" r="1"></circle>
                     <circle cx="19" cy="12" r="1"></circle>
@@ -455,7 +663,6 @@
             </div>
             <div class="list-cell type">
               <div class="model-type small" style="--model-color: {getModelTypeColor(project.modellingType)}">
-                <span class="material-icons model-icon small">{getModelTypeIcon(project.modellingType)}</span>
                 <span class="type-label">{project.modellingType}</span>
               </div>
             </div>
@@ -632,14 +839,23 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: 2rem;
+    background-color: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+  }
+  
+  .toolbar-left {
+    display: flex;
     flex-wrap: wrap;
     gap: 1rem;
+    align-items: center;
+    flex: 1;
   }
   
   .search-box {
     position: relative;
-    width: 100%;
-    max-width: 400px;
+    width: 300px;
   }
   
   .search-box svg {
@@ -657,12 +873,14 @@
     border-radius: 4px;
     font-size: 1rem;
     transition: all 0.2s ease;
+    background-color: #f8f9fa;
   }
   
   .search-box input:focus {
     border-color: #3a86ff;
     box-shadow: 0 0 0 3px rgba(58, 134, 255, 0.1);
     outline: none;
+    background-color: white;
   }
   
   .clear-search {
@@ -683,6 +901,44 @@
     background-color: rgba(0, 0, 0, 0.05);
   }
   
+  /* User Filter */
+  .user-filter {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1;
+  }
+  
+  .user-filter label {
+    color: #2b3a67;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+  
+  .user-filter select {
+    padding: 0.75rem 1rem;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    background-color: #f8f9fa;
+    font-size: 0.9rem;
+    color: #2b3a67;
+    cursor: pointer;
+    flex-grow: 1;
+    max-width: 250px;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236c757d' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 16px;
+  }
+  
+  .user-filter select:focus {
+    border-color: #3a86ff;
+    box-shadow: 0 0 0 3px rgba(58, 134, 255, 0.1);
+    outline: none;
+    background-color: white;
+  }
+  
   .toolbar-actions {
     display: flex;
     align-items: center;
@@ -693,11 +949,17 @@
     display: flex;
     align-items: center;
     gap: 0.75rem;
+    background-color: #f8f9fa;
+    padding: 0.5rem;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
   }
   
   .sort-label {
-    color: #6c757d;
+    color: #2b3a67;
     font-size: 0.875rem;
+    font-weight: 500;
+    margin-left: 0.5rem;
   }
   
   .sort-button {
@@ -707,17 +969,17 @@
     font-size: 0.875rem;
     font-weight: 500;
     cursor: pointer;
-    padding: 0.25rem 0.5rem;
+    padding: 0.5rem 0.75rem;
     border-radius: 4px;
     transition: all 0.2s ease;
   }
   
   .sort-button.active {
-    color: #3a86ff;
-    background-color: rgba(58, 134, 255, 0.1);
+    color: white;
+    background-color: #3a86ff;
   }
   
-  .sort-button:hover {
+  .sort-button:hover:not(.active) {
     background-color: rgba(0, 0, 0, 0.05);
   }
   
@@ -752,30 +1014,30 @@
   /* Grid View */
   .projects-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 1.5rem;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1.25rem;
     margin-bottom: 2rem;
   }
   
   .project-card {
     background-color: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    border-radius: 10px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
     overflow: hidden;
     transition: transform 0.3s ease, box-shadow 0.3s ease;
-    border: 1px solid #e9ecef;
     display: flex;
     flex-direction: column;
     position: relative;
+    border: none;
   }
   
   .project-card:hover {
     transform: translateY(-5px);
-    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
   }
   
   .project-card.is-owner {
-    border-left: 3px solid #3a86ff;
+    border-left: 4px solid #3a86ff;
   }
   
   .project-header {
@@ -787,46 +1049,38 @@
   }
   
   .model-type {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.35rem 0.75rem;
+    display: inline-block;
+    padding: 0.4rem 0.8rem;
     background-color: var(--model-color, #3a86ff);
     color: white;
-    border-radius: 4px;
-    font-size: 0.75rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
     font-weight: 600;
   }
   
   .model-type.small {
     padding: 0.25rem 0.5rem;
-  }
-  
-  .model-icon {
-    font-size: 1.25rem;
-  }
-  
-  .model-icon.small {
-    font-size: 1rem;
+    font-size: 0.7rem;
   }
   
   .version-badge {
     background-color: #f8f9fa;
-    color: #6c757d;
-    padding: 0.35rem 0.75rem;
-    border-radius: 4px;
-    font-size: 0.75rem;
+    color: #2b3a67;
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
     font-weight: 600;
   }
   
   .version-badge.small {
     padding: 0.25rem 0.5rem;
+    font-size: 0.7rem;
   }
   
   .project-name {
     padding: 1.25rem 1.25rem 0.5rem;
     margin: 0;
-    font-size: 1.25rem;
+    font-size: 1.2rem;
     font-weight: 600;
   }
   
@@ -844,7 +1098,7 @@
     padding: 0 1.25rem 1.25rem;
     display: flex;
     flex-wrap: wrap;
-    gap: 1rem;
+    gap: 0.75rem;
   }
   
   .meta-item {
@@ -865,8 +1119,8 @@
   }
   
   .action-button {
-    padding: 0.5rem 1rem;
-    border-radius: 4px;
+    padding: 0.6rem 1rem;
+    border-radius: 6px;
     font-weight: 500;
     font-size: 0.875rem;
     text-decoration: none;
@@ -891,6 +1145,8 @@
   
   .action-button.primary:hover {
     background-color: #2667cc;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(58, 134, 255, 0.2);
   }
   
   .action-button.icon {
@@ -1105,7 +1361,24 @@
       align-items: flex-start;
     }
     
+    .toolbar-left {
+      width: 100%;
+      margin-bottom: 1rem;
+    }
+    
     .search-box {
+      max-width: 100%;
+      width: 100%;
+    }
+    
+    .user-filter {
+      width: 100%;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    
+    .user-filter select {
+      width: 100%;
       max-width: 100%;
     }
     
@@ -1142,6 +1415,21 @@
     
     .sort-options {
       display: none;
+    }
+    
+    .header-content {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 1rem;
+    }
+    
+    .header-actions {
+      width: 100%;
+    }
+    
+    .header-actions .btn-primary {
+      width: 100%;
+      justify-content: center;
     }
   }
 </style>
