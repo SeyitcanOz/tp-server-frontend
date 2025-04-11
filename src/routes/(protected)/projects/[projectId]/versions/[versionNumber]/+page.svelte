@@ -3,7 +3,6 @@
     import { page } from '$app/stores';
     import { user } from '$lib/stores/auth';
     import api from '$lib/services/api';
-    import Navbar from '$lib/components/Navbar.svelte';
     import type { ProjectDetail } from '$lib/types/project';
     import type { ProjectVersion } from '$lib/types/version';
     
@@ -12,6 +11,7 @@
     let version: ProjectVersion | null = null;
     let isLoading = true;
     let error: string | null = null;
+    let activeTab: 'projectData' | 'modelInfo' | 'dotModel' | 'results' = 'projectData';
     
     // Extract IDs from URL parameters
     $: projectId = $page.params.projectId;
@@ -82,13 +82,6 @@
       loadData();
     });
 </script>
-  
-<svelte:head>
-  <title>{pageTitle}</title>
-  <meta name="description" content="Project version details" />
-</svelte:head>
-  
-<Navbar />
   
 <div class="container version-container">
   {#if isLoading}
@@ -191,15 +184,51 @@
     
     <div class="data-section">
       <div class="data-tabs">
-        <button class="tab-button active">Project Data</button>
-        <button class="tab-button">Model Info</button>
-        <button class="tab-button">Dot Model</button>
-        <button class="tab-button">Results</button>
+        <button 
+          class="tab-button" 
+          class:active={activeTab === 'projectData'}
+          on:click={() => activeTab = 'projectData'}
+        >
+          Project Data
+        </button>
+        <button 
+          class="tab-button" 
+          class:active={activeTab === 'modelInfo'}
+          on:click={() => activeTab = 'modelInfo'}
+        >
+          Model Info
+        </button>
+        <button 
+          class="tab-button" 
+          class:active={activeTab === 'dotModel'}
+          on:click={() => activeTab = 'dotModel'}
+        >
+          Dot Model
+        </button>
+        <button 
+          class="tab-button" 
+          class:active={activeTab === 'results'}
+          on:click={() => activeTab = 'results'}
+        >
+          Results
+        </button>
       </div>
       
       <div class="data-panel">
         <div class="data-viewer">
-          <pre>{JSON.stringify(version.projectData, null, 2)}</pre>
+          {#if activeTab === 'projectData'}
+            <pre>{JSON.stringify(version.projectData, null, 2)}</pre>
+          {:else if activeTab === 'modelInfo' && version.modelInfoData}
+            <pre>{JSON.stringify(version.modelInfoData, null, 2)}</pre>
+          {:else if activeTab === 'dotModel' && version.dotModelData}
+            <pre>{JSON.stringify(version.dotModelData, null, 2)}</pre>
+          {:else if activeTab === 'results' && version.resultsData}
+            <pre>{JSON.stringify(version.resultsData, null, 2)}</pre>
+          {:else}
+            <div class="no-data">
+              <p>No data available for this section.</p>
+            </div>
+          {/if}
         </div>
       </div>
     </div>
@@ -435,5 +464,18 @@
     .tab-button {
       padding: 0.75rem 1rem;
     }
+
+    .data-viewer pre {
+    margin: 0;
+    font-family: monospace;
+    font-size: 0.875rem;
+  }
+  
+  .no-data {
+    padding: 3rem;
+    text-align: center;
+    color: var(--text-secondary);
+  }
+
   }
 </style>

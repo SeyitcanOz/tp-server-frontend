@@ -2,6 +2,7 @@ import api from './api';
 import { token, user } from '../stores/auth';
 import type { LoginRequest, AuthResponse, User } from '../types/auth';
 import { browser } from '$app/environment';
+import userService from './user';
 
 /**
  * User authentication service
@@ -24,6 +25,23 @@ export const authService = {
     });
     
     return response.data;
+  },
+  
+  /**
+   * Refresh the current user data from the server
+   */
+  async refreshUserData(): Promise<User | null> {
+    try {
+      if (this.isAuthenticated()) {
+        const userData = await userService.getCurrentUser();
+        user.set(userData);
+        return userData;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error refreshing user data:', error);
+      return null;
+    }
   },
   
   /**

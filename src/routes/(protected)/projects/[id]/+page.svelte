@@ -2,10 +2,10 @@
     import { onMount } from 'svelte';
     import { page } from '$app/stores';
     import { user } from '$lib/stores/auth';
+    import userService from '$lib/services/user';
     import api from '$lib/services/api';
     import type { ProjectDetail } from '$lib/types/project';
     import type { VersionSummary } from '$lib/types/version';
-    import Navbar from '$lib/components/Navbar.svelte';
     
     // Project data
     let project: ProjectDetail | null = null;
@@ -55,12 +55,28 @@
     
     async function loadOwnerDetails(userId: string) {
       try {
-        // In a real application, you would have an endpoint to fetch user details
-        const response = await api.get(`/api/users/${userId}`);
-        ownerUsername = response.data.username;
+        // If the owner is the current user, we already know the username
+        if (userId === $user?.id) {
+          ownerUsername = $user.username;
+          return;
+        }
+        
+        // If user is admin, try to fetch the owner details
+        if ($user?.roles.includes('Admin')) {
+          try {
+            const userData = await userService.getUserById(userId);
+            ownerUsername = userData.username;
+          } catch (error) {
+            console.error('Error loading owner details:', error);
+            ownerUsername = 'User ' + userId.substring(0, 6) + '...';
+          }
+        } else {
+          // For non-admin users, we might not have permission to get details
+          ownerUsername = 'User ' + userId.substring(0, 6) + '...';
+        }
       } catch (error) {
         console.error('Error loading owner details:', error);
-        ownerUsername = 'Unknown User';
+        ownerUsername = 'User ' + userId.substring(0, 6) + '...';
       }
     }
     
@@ -104,7 +120,6 @@
     <meta name="description" content="Project details and versions" />
   </svelte:head>
   
-  <Navbar />
   
   <div class="container project-container">
     {#if isLoadingProject}

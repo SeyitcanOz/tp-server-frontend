@@ -1,29 +1,28 @@
 <script lang="ts">
   import { user } from '$lib/stores/auth';
-  import Navbar from '$lib/components/Navbar.svelte';
 </script>
 
 <svelte:head>
-  <title>TPServer - Project Management Portal</title>
-  <meta name="description" content="TPServer - Engineering Project Management Portal" />
+  <title>TPServer - Engineering Project Management Platform</title>
+  <meta name="description" content="TPServer - Advanced Engineering Project Management Portal for structural analysis and modeling" />
 </svelte:head>
 
-<Navbar />
 
 <div class="hero">
-  <div class="container">
+  <div class="container hero-container">
     <div class="hero-content">
-      <h1>Welcome to TPServer</h1>
-      <p class="subtitle">Advanced Engineering Project Management Platform</p>
+      <h1>Engineering Project <span class="accent">Management</span> Platform</h1>
+      <p class="subtitle">Advanced structural modeling, version control, and collaborative tools for engineering teams</p>
       
       {#if $user}
         <div class="hero-actions">
-          <a href="/projects" class="btn btn-primary">View Your Projects</a>
+          <a href="/projects" class="btn-primary">View Your Projects</a>
+          <a href="/projects/new" class="btn-secondary">Create New Project</a>
         </div>
       {:else}
         <div class="hero-actions">
-          <a href="/login" class="btn btn-primary">Login</a>
-          <p class="login-subtext">Login to access your engineering projects</p>
+          <a href="/login" class="btn-primary">Sign In</a>
+          <p class="login-subtext">Sign in to access your engineering projects and collaborate with your team</p>
         </div>
       {/if}
     </div>

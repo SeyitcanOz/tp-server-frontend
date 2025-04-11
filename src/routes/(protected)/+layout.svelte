@@ -3,7 +3,6 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { authService } from '$lib/services/auth';
-  import Navbar from '$lib/components/Navbar.svelte';
   
   // Only perform auth check in browser environment
   onMount(() => {
@@ -12,8 +11,6 @@
     }
   });
 </script>
-
-<Navbar />
 
 <div class="container page-container">
   <slot />
