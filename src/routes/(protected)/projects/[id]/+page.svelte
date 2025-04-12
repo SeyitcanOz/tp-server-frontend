@@ -1,4 +1,3 @@
-<!-- src/routes/(protected)/projects/[id]/+page.svelte -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
@@ -206,38 +205,7 @@
       <div class="header-content">
         <div class="header-left">
           <h1>{project.projectName}</h1>
-          <p class="subtitle">{project.modellingType}</p>
         </div>
-        
-        {#if isAdminOrOwner}
-          <div class="header-actions">
-            <button class="action-icon-btn create" on:click={createNewVersion} title="Create New Version">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-              <span>New Version</span>
-            </button>
-            <button class="action-icon-btn edit" on:click={editProject} title="Edit Project">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-              </svg>
-              <span>Edit</span>
-            </button>
-            {#if $user?.roles.includes('Admin')}
-              <button class="action-icon-btn delete" on:click={deleteProject} title="Delete Project">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="3 6 5 6 21 6"></polyline>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                  <line x1="10" y1="11" x2="10" y2="17"></line>
-                  <line x1="14" y1="11" x2="14" y2="17"></line>
-                </svg>
-                <span>Delete</span>
-              </button>
-            {/if}
-          </div>
-        {/if}
       </div>
     </div>
     
@@ -484,19 +452,7 @@ h1 {
   font-weight: 700;
 }
 
-.subtitle {
-  color: var(--text-secondary);
-  font-size: 1.1rem;
-  margin: 0;
-}
-
 /* Action Buttons */
-.header-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-
 .btn {
   padding: 0.75rem 1.25rem;
   border-radius: 6px;
@@ -508,10 +464,6 @@ h1 {
   transition: all 0.2s;
   border: none;
   font-size: 0.95rem;
-}
-
-.btn svg {
-  flex-shrink: 0;
 }
 
 .btn-primary {
@@ -534,17 +486,6 @@ h1 {
 .btn-outline:hover:not(:disabled) {
   background-color: #f8f9fa;
   border-color: #c1c9d0;
-}
-
-.btn-danger {
-  background-color: var(--danger-color);
-  color: white;
-}
-
-.btn-danger:hover:not(:disabled) {
-  background-color: #d02b2e;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
 .btn:disabled {
@@ -849,176 +790,26 @@ h1 {
   margin: 0;
 }
 
-.versions-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-/* Search Box */
-.search-box {
-  position: relative;
-  width: 250px;
-}
-
-.search-box input {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #dee2e6;
-  border-radius: 4px;
-  font-size: 0.875rem;
-}
-
-.search-box input:focus {
-  border-color: var(--primary-color);
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(58, 134, 255, 0.1);
-}
-
-.clear-search {
-  position: absolute;
-  right: 0.5rem;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  color: #6c757d;
-  padding: 0.25rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-}
-
-.clear-search:hover {
-  background-color: rgba(0, 0, 0, 0.05);
-}
-
-/* Versions Table */
-.versions-table-container {
-  border: 1px solid #e9ecef;
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.versions-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-}
-
-.versions-table th {
-  background-color: #f8f9fa;
-  border-bottom: 2px solid #dee2e6;
-  padding: 0.5rem;
-}
-
-.sort-button {
-  padding: 0.75rem 0.5rem;
-  background: none;
-  border: none;
-  font-weight: 600;
-  color: var(--text-color);
-  cursor: pointer;
-  width: 100%;
-  text-align: left;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.sort-button:hover {
-  color: var(--primary-color);
-}
-
-.sort-icon {
-  display: inline-flex;
-  margin-left: 0.25rem;
-}
-
-.versions-table td {
-  padding: 0.75rem 0.5rem;
-  border-bottom: 1px solid #e9ecef;
-}
-
-.versions-table tr:last-child td {
-  border-bottom: none;
-}
-
-.versions-table tr:hover td {
-  background-color: rgba(58, 134, 255, 0.04);
-}
-
-.version-number {
-  font-weight: 500;
-}
-
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.25rem 0.5rem;
-  background-color: #f0f0f0;
-  color: #6c757d;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.status-badge.current {
-  background-color: #e6f7ee;
-  color: var(--success-color);
-}
-
-.version-actions {
-  display: flex;
-  gap: 0.5rem;
-}
-
 .empty-versions {
   text-align: center;
   padding: 3rem;
   color: var(--text-secondary);
 }
 
-.empty-versions .btn {
-  margin-top: 1rem;
-}
-
 /* Responsive Styles */
 @media (max-width: 992px) {
-  .header-content {
-    flex-direction: column;
-    gap: 1.5rem;
-  }
-  
-  .header-actions {
-    width: 100%;
-  }
-  
-  .versions-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  
-  .versions-toolbar {
-    width: 100%;
-  }
-  
-  .search-box {
-    width: 100%;
-  }
-}
-
-@media (max-width: 768px) {
   .info-grid {
     grid-template-columns: 1fr;
   }
   
-  .versions-table {
-    display: block;
-    overflow-x: auto;
+  .header-content {
+    flex-direction: column;
+    gap: 1rem;
   }
+
+}
+
+@media (max-width: 768px) {
 }
 </style>
 

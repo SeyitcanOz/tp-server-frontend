@@ -19,7 +19,7 @@
   
   // Extend the ProjectVersion type to include properly typed resultsData
   type ExtendedProjectVersion = ProjectVersion & {
-      resultsData?: ResultsData;
+      resultsData?: ResultsData | null;
   };
   
   // Project and version data
@@ -28,13 +28,12 @@
   let isLoading = true;
   let error: string | null = null;
   
-  // For results table pagination and sorting/filtering
+  // For results table pagination
   let currentPage = 1;
-  let pageSize = 10;
+  let pageSize = 20;
   let totalPages = 1;
-  let sortColumn: string | null = null;
+  let sortColumn: string = "";
   let sortDirection: 'asc' | 'desc' = 'asc';
-  let filterText = '';
   let filteredResults: ResultRow[] = [];
   let availableColumns: string[] = [];
   
@@ -56,16 +55,7 @@
   $: {
     if (version?.resultsData?.rows) {
       // Apply filtering if filter text exists
-      if (filterText.trim()) {
-        const searchText = filterText.toLowerCase();
-        filteredResults = version.resultsData.rows.filter(row => {
-          return Object.entries(row).some(([key, value]) => {
-            return String(value).toLowerCase().includes(searchText);
-          });
-        });
-      } else {
-        filteredResults = [...version.resultsData.rows];
-      }
+      filteredResults = [...version.resultsData.rows];
       
       // Apply sorting if a column is selected
       if (sortColumn) {
@@ -301,13 +291,6 @@
     return String(value);
   }
   
-  // Reset filters
-  function resetFilters() {
-    filterText = '';
-    sortColumn = null;
-    currentPage = 1;
-  }
-  
   // Page title
   $: pageTitle = project && version 
     ? `Version #${versionNumber} of ${project.projectName} - TPServer` 
@@ -319,321 +302,321 @@
 </script>
 
 <svelte:head>
-<title>{pageTitle}</title>
+  <title>{pageTitle}</title>
 </svelte:head>
 
 <div class="container version-container">
-{#if isLoading}
-  <div class="loading">
-    <div class="loading-spinner"></div>
-    <p>Loading version details...</p>
-  </div>
-{:else if error}
-  <div class="error-message">
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="12" cy="12" r="10"></circle>
-      <line x1="12" y1="8" x2="12" y2="12"></line>
-      <line x1="12" y1="16" x2="12.01" y2="16"></line>
-    </svg>
-    <p>{error}</p>
-    <div class="error-actions">
-      <button class="btn btn-primary" on:click={loadData}>Try Again</button>
-      <a href={`/projects/${projectId}`} class="btn btn-outline">Back to Project</a>
+  {#if isLoading}
+    <div class="loading">
+      <div class="loading-spinner"></div>
+      <p>Loading version details...</p>
     </div>
-  </div>
-{:else if project && version}
-  <div class="page-header">
-    <div class="breadcrumbs">
-      <a href="/projects">Projects</a> &gt; 
-      <a href={`/projects/${projectId}`}>{project.projectName}</a> &gt; 
-      Version #{versionNumber}
+  {:else if error}
+    <div class="error-message">
+      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      <p>{error}</p>
+      <div class="error-actions">
+        <button class="btn btn-primary" on:click={loadData}>Try Again</button>
+        <a href={`/projects/${projectId}`} class="btn btn-outline">Back to Project</a>
+      </div>
     </div>
-    
-    <div class="header-content">
-      <div class="header-left">
-        <h1>Version #{versionNumber}</h1>
-        <p class="subtitle">
-          {project.projectName} • {project.modellingType}
-          {#if versionNumber === project.currentVersion}
-            <span class="current-version-badge">Current Version</span>
-          {/if}
-        </p>
+  {:else if project && version}
+    <div class="page-header">
+      <div class="breadcrumbs">
+        <a href="/projects">Projects</a> &gt; 
+        <a href={`/projects/${projectId}`}>{project.projectName}</a> &gt; 
+        Version #{versionNumber}
       </div>
       
-      <div class="header-actions">
-        <!-- Version Navigation -->
-        <div class="version-navigation">
-          <button 
-            class="btn btn-outline btn-nav" 
-            disabled={versionNumber <= 1}
-            on:click={() => goToVersion(versionNumber - 1)}
-            title={versionNumber <= 1 ? "This is the first version" : `Go to version ${versionNumber - 1}`}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="15 18 9 12 15 6"></polyline>
-            </svg>
-            Previous
-          </button>
-          <button 
-            class="btn btn-outline btn-nav" 
-            disabled={versionNumber >= project.currentVersion}
-            on:click={() => goToVersion(versionNumber + 1)}
-            title={versionNumber >= project.currentVersion ? "This is the latest version" : `Go to version ${versionNumber + 1}`}
-          >
-            Next
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="9 18 15 12 9 6"></polyline>
-            </svg>
-          </button>
+      <div class="header-content">
+        <div class="header-left">
+          <h1>Version #{versionNumber}</h1>
         </div>
         
-        {#if isAdminOrOwner && versionNumber !== project.currentVersion}
-          <button class="btn btn-primary" on:click={makeCurrentVersion}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-              <polyline points="22 4 12 14.01 9 11.01"></polyline>
-            </svg>
-            Set as Current
-          </button>
-        {/if}
-      </div>
-    </div>
-  </div>
-
-  <!-- Version Information Card -->
-  <div class="info-card">
-    <div class="info-grid">
-      <div class="info-section">
-        <div class="info-item">
-          <span class="label">Version ID</span>
-          <span class="value">{version.id}</span>
-        </div>
-        <div class="info-item">
-          <span class="label">Version Number</span>
-          <span class="value version-number-badge">v{version.versionNumber}</span>
-        </div>
-      </div>
-      
-      <div class="info-section">
-        <div class="info-item">
-          <span class="label">Created On</span>
-          <span class="value">{formatDate(version.createdAt)}</span>
-        </div>
-        <div class="info-item">
-          <span class="label">Modelling Type</span>
-          <span class="value">{project.modellingType}</span>
-        </div>
-      </div>
-    </div>
-  </div>
-  
-  <!-- Downloads Section -->
-  <div class="downloads-section">
-    <h3>Available Downloads</h3>
-    <div class="download-card-grid">
-      <button 
-        class="download-card" 
-        class:disabled={!hasProjectData}
-        disabled={!hasProjectData || isDownloading.project}
-        on:click={downloadProjectZip}
-      >
-        <div class="download-icon">
-          {#if isDownloading.project}
-            <div class="button-spinner"></div>
-          {:else}
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7 10 12 15 17 10"></polyline>
-              <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-          {/if}
-        </div>
-        <div class="download-content">
-          <span class="download-title">Project Files</span>
-          <span class="download-format">ZIP Archive</span>
-        </div>
-      </button>
-      
-      <button 
-        class="download-card" 
-        class:disabled={!hasDotModelData}
-        disabled={!hasDotModelData || isDownloading.dotmodel}
-        on:click={downloadDotModel}
-      >
-        <div class="download-icon">
-          {#if isDownloading.dotmodel}
-            <div class="button-spinner"></div>
-          {:else}
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-            </svg>
-          {/if}
-        </div>
-        <div class="download-content">
-          <span class="download-title">Model File</span>
-          <span class="download-format">DOT Model</span>
-        </div>
-      </button>
-      
-      <button 
-        class="download-card" 
-        class:disabled={!hasResultsData}
-        disabled={!hasResultsData || isDownloading.results}
-        on:click={downloadResultsCsv}
-      >
-        <div class="download-icon">
-          {#if isDownloading.results}
-            <div class="button-spinner"></div>
-          {:else}
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-              <line x1="16" y1="13" x2="8" y2="13"></line>
-              <line x1="16" y1="17" x2="8" y2="17"></line>
-              <polyline points="10 9 9 9 8 9"></polyline>
-            </svg>
-          {/if}
-        </div>
-        <div class="download-content">
-          <span class="download-title">Results Data</span>
-          <span class="download-format">CSV File</span>
-        </div>
-      </button>
-    </div>
-  </div>
-
-  <!-- Results Section -->
-  <div class="results-section">
-    <div class="results-header">
-      <h2>Analysis Results</h2>
-      
-      <div class="results-toolbar">
-        <div class="page-size-dropdown">
-          <button class="page-size-button">
-            <span>{pageSize} per page</span>
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </button>
-          <div class="page-size-menu">
-            <button class:active={pageSize === 10} on:click={() => pageSize = 10}>10 per page</button>
-            <button class:active={pageSize === 25} on:click={() => pageSize = 25}>25 per page</button>
-            <button class:active={pageSize === 50} on:click={() => pageSize = 50}>50 per page</button>
-            <button class:active={pageSize === 100} on:click={() => pageSize = 100}>100 per page</button>
-          </div>
-        </div>
-        
-        {#if version?.resultsData?.rows && version.resultsData.rows.length > 0}
-          <span class="results-count">
-            Showing {Math.min((currentPage - 1) * pageSize + 1, version.resultsData.rows.length)}-{Math.min(currentPage * pageSize, version.resultsData.rows.length)} of {version.resultsData.rows.length} results
-          </span>
-        {/if}
-      </div>
-    </div>
-    
-    {#if hasResultsData}
-      <div class="results-table-container">
-        <div class="table-wrapper">
-          <table class="results-table">
-            <thead>
-              <tr>
-                {#each getResultsHeaders() as header}
-                  <th>{header}</th>
-                {/each}
-              </tr>
-            </thead>
-            <tbody>
-              {#if version?.resultsData?.rows?.slice((currentPage - 1) * pageSize, currentPage * pageSize).length === 0}
-                <tr>
-                  <td colspan={getResultsHeaders().length} class="no-results-cell">
-                    No results available
-                  </td>
-                </tr>
-              {:else}
-                {#each version?.resultsData?.rows?.slice((currentPage - 1) * pageSize, currentPage * pageSize) || [] as row}
-                  <tr>
-                    {#each getResultsHeaders() as header}
-                      <td>{formatCellValue(row[header])}</td>
-                    {/each}
-                  </tr>
-                {/each}
-              {/if}
-            </tbody>
-          </table>
-        </div>
-        
-        {#if totalPages > 1}
-          <div class="pagination">
+        <div class="header-actions">
+          <!-- Version Navigation -->
+          <div class="version-navigation">
             <button 
-              class="pagination-btn" 
-              disabled={currentPage === 1} 
-              on:click={() => changePage(1)}
-              title="First page"
-              aria-label="Go to first page"
+              class="btn btn-outline btn-nav" 
+              disabled={versionNumber <= 1}
+              on:click={() => goToVersion(versionNumber - 1)}
+              title={versionNumber <= 1 ? "This is the first version" : `Go to version ${versionNumber - 1}`}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="11 17 6 12 11 7"></polyline>
-                <polyline points="18 17 13 12 18 7"></polyline>
-              </svg>
-            </button>
-            
-            <button 
-              class="pagination-btn" 
-              disabled={currentPage === 1} 
-              on:click={() => changePage(currentPage - 1)}
-              title="Previous page"
-              aria-label="Go to previous page"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="15 18 9 12 15 6"></polyline>
               </svg>
+              Previous
             </button>
-            
-            <div class="page-info">
-              <span class="current-page">{currentPage}</span>
-              <span class="page-divider">of</span>
-              <span class="total-pages">{totalPages}</span>
-            </div>
-            
             <button 
-              class="pagination-btn" 
-              disabled={currentPage === totalPages} 
-              on:click={() => changePage(currentPage + 1)}
-              title="Next page"
-              aria-label="Go to next page"
+              class="btn btn-outline btn-nav" 
+              disabled={versionNumber >= project.currentVersion}
+              on:click={() => goToVersion(versionNumber + 1)}
+              title={versionNumber >= project.currentVersion ? "This is the latest version" : `Go to version ${versionNumber + 1}`}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              Next
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="9 18 15 12 9 6"></polyline>
               </svg>
             </button>
-            
-            <button 
-              class="pagination-btn" 
-              disabled={currentPage === totalPages} 
-              on:click={() => changePage(totalPages)}
-              title="Last page"
-              aria-label="Go to last page"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="13 17 18 12 13 7"></polyline>
-                <polyline points="6 17 11 12 6 7"></polyline>
-              </svg>
-            </button>
           </div>
-        {/if}
+          
+          {#if isAdminOrOwner && versionNumber !== project.currentVersion}
+            <button class="btn btn-primary" on:click={makeCurrentVersion}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+              </svg>
+              Set as Current
+            </button>
+          {/if}
+        </div>
       </div>
-    {:else}
-      <div class="no-results">
-        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="8" y1="12" x2="16" y2="12"></line>
-        </svg>
-        <p>No results data available for this version</p>
+    </div>
+
+    <!-- Combined Information and Downloads Card -->
+    <div class="unified-card">
+      <!-- Version Information Section -->
+      <div class="card-section">
+        <div class="section-header">
+          <h2>Version Information</h2>
+        </div>
+        <div class="info-row">
+          <div class="info-item">
+            <span class="label">Version ID</span>
+            <span class="value">{version.id}</span>
+          </div>
+          
+          <div class="info-item">
+            <span class="label">Created On</span>
+            <span class="value">{formatDate(version.createdAt)}</span>
+          </div>
+          
+          <div class="info-item">
+            <span class="label">Status</span>
+            <span class="value">
+              {#if versionNumber === project.currentVersion}
+                <span class="status-indicator current">Current Version</span>
+              {:else}
+                <span class="status-indicator">Previous Version</span>
+              {/if}
+            </span>
+          </div>
+        </div>
       </div>
-    {/if}
-  </div>
-{/if}
+      
+      <!-- Divider -->
+      <div class="card-divider"></div>
+      
+      <!-- Downloads Section -->
+      <div class="card-section">
+        <div class="section-header">
+          <h2>Downloads</h2>
+        </div>
+        <div class="download-row">
+          <button 
+            class="download-btn" 
+            class:disabled={!hasProjectData}
+            disabled={!hasProjectData || isDownloading.project}
+            on:click={downloadProjectZip}
+          >
+            {#if isDownloading.project}
+              <div class="button-spinner"></div>
+            {:else}
+              <div class="btn-icon project">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+              </div>
+            {/if}
+            <div class="btn-content">
+              <span class="btn-title">Project Files</span>
+              <span class="btn-subtitle">TP Project Folder</span>
+            </div>
+          </button>
+          
+          <button 
+            class="download-btn" 
+            class:disabled={!hasDotModelData}
+            disabled={!hasDotModelData || isDownloading.dotmodel}
+            on:click={downloadDotModel}
+          >
+            {#if isDownloading.dotmodel}
+              <div class="button-spinner"></div>
+            {:else}
+              <div class="btn-icon model">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="12" y1="18" x2="12" y2="12"></line>
+                  <line x1="9" y1="15" x2="15" y2="15"></line>
+                </svg>
+              </div>
+            {/if}
+            <div class="btn-content">
+              <span class="btn-title">Model File</span>
+              <span class="btn-subtitle">.MODEL Format</span>
+            </div>
+          </button>
+          
+          <button 
+            class="download-btn" 
+            class:disabled={!hasResultsData}
+            disabled={!hasResultsData || isDownloading.results}
+            on:click={downloadResultsCsv}
+          >
+            {#if isDownloading.results}
+              <div class="button-spinner"></div>
+            {:else}
+              <div class="btn-icon csv">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                  <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+              </div>
+            {/if}
+            <div class="btn-content">
+              <span class="btn-title">Results Data</span>
+              <span class="btn-subtitle">CSV Format</span>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results Section -->
+    <div class="results-section">
+      <div class="results-header">
+        <h2>Analysis Results</h2>
+        
+        <div class="results-info">
+          {#if version?.resultsData?.rows && version.resultsData.rows.length > 0}
+            <span class="results-count">
+              Showing {Math.min((currentPage - 1) * pageSize + 1, version.resultsData.rows.length)}-{Math.min(currentPage * pageSize, version.resultsData.rows.length)} of {version.resultsData.rows.length} results
+            </span>
+          {/if}
+        </div>
+      </div>
+      
+      {#if hasResultsData}
+        <div class="results-table-container">
+          <div class="table-wrapper">
+            <table class="results-table">
+              <thead>
+                <tr>
+                  {#each getResultsHeaders() as header}
+                    <th>
+                      <button class="header-button" on:click={() => sortByColumn(header)}>
+                        {header}
+                        {#if sortColumn === header}
+                          <span class="sort-indicator">
+                            {sortDirection === 'asc' ? '↑' : '↓'}
+                          </span>
+                        {/if}
+                      </button>
+                    </th>
+                  {/each}
+                </tr>
+              </thead>
+              <tbody>
+                {#if filteredResults.length === 0}
+                  <tr>
+                    <td colspan={getResultsHeaders().length} class="no-results-cell">
+                      No results available
+                    </td>
+                  </tr>
+                {:else}
+                  {#each paginatedResults as row}
+                    <tr>
+                      {#each getResultsHeaders() as header}
+                        <td>{formatCellValue(row[header])}</td>
+                      {/each}
+                    </tr>
+                  {/each}
+                {/if}
+              </tbody>
+            </table>
+          </div>
+          
+          {#if totalPages > 1}
+            <div class="pagination">
+              <button 
+                class="pagination-btn" 
+                disabled={currentPage === 1} 
+                on:click={() => changePage(1)}
+                title="First page"
+                aria-label="Go to first page"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="11 17 6 12 11 7"></polyline>
+                  <polyline points="18 17 13 12 18 7"></polyline>
+                </svg>
+              </button>
+              
+              <button 
+                class="pagination-btn" 
+                disabled={currentPage === 1} 
+                on:click={() => changePage(currentPage - 1)}
+                title="Previous page"
+                aria-label="Go to previous page"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+              </button>
+              
+              <div class="page-info">
+                <span class="current-page">{currentPage}</span>
+                <span class="page-divider">of</span>
+                <span class="total-pages">{totalPages}</span>
+              </div>
+              
+              <button 
+                class="pagination-btn" 
+                disabled={currentPage === totalPages} 
+                on:click={() => changePage(currentPage + 1)}
+                title="Next page"
+                aria-label="Go to next page"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </button>
+              
+              <button 
+                class="pagination-btn" 
+                disabled={currentPage === totalPages} 
+                on:click={() => changePage(totalPages)}
+                title="Last page"
+                aria-label="Go to last page"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="13 17 18 12 13 7"></polyline>
+                  <polyline points="6 17 11 12 6 7"></polyline>
+                </svg>
+              </button>
+            </div>
+          {/if}
+        </div>
+      {:else}
+        <div class="no-results">
+          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="8" y1="12" x2="16" y2="12"></line>
+          </svg>
+          <p>No results data available for this version</p>
+        </div>
+      {/if}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -727,7 +710,7 @@
 .header-content {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .header-left {
@@ -739,27 +722,9 @@ h1 {
   font-size: 2.5rem;
   color: var(--secondary-color);
   margin: 0;
-  margin-bottom: 0.5rem;
   font-weight: 700;
 }
 
-.subtitle {
-  color: var(--text-secondary);
-  font-size: 1.1rem;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.current-version-badge {
-  background-color: var(--success-color);
-  color: white;
-  padding: 0.25rem 0.5rem;
-  border-radius: 50rem;
-  font-size: 0.7rem;
-  font-weight: 600;
-}
 
 /* Header Actions */
 .header-actions {
@@ -821,73 +786,110 @@ h1 {
   white-space: nowrap;
 }
 
-/* Info Card */
-.info-card {
+/* Unified Card Layout */
+.unified-card {
   background-color: white;
   border-radius: 8px;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  padding: 1.5rem;
   margin-bottom: 1.5rem;
+  border-top: 4px solid var(--primary-color);
+  overflow: hidden;
 }
 
-.info-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 1.5rem;
+.card-section {
+  padding: 1.25rem;
 }
 
-.info-section {
+.section-header {
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.section-header h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  color: var(--secondary-color);
+}
+
+.card-divider {
+  height: 1px;
+  background-color: #e9ecef;
+  margin: 0;
+}
+
+.info-row {
   display: flex;
-  flex-direction: column;
-  gap: 1rem;
+  gap: 2rem;
 }
 
 .info-item {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.3rem;
+  flex: 1;
 }
 
 .label {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .value {
-  font-size: 1rem;
+  font-size: 0.95rem;
   color: var(--text-color);
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* Downloads Section */
-.download-buttons {
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background-color: #f0f0f0;
+  color: #6c757d;
+}
+
+.status-indicator.current {
+  background-color: #e6f7ee;
+  color: #38b000;
+}
+
+/* Download Section */
+.download-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.75rem;
+  justify-content: space-between;
 }
 
 .download-btn {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  background-color: #f8f9fa;
-  border: 1px solid #e9ecef;
-  border-radius: 4px;
-  color: var(--text-color);
-  font-size: 0.875rem;
-  font-weight: 500;
-  transition: all 0.2s;
+  padding: 1rem;
+  background-color: #ffffff;
+  border: 1px solid #eaeaea;
+  border-radius: 8px;
   cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  gap: 1rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  flex: 1;
+  min-width: 200px;
 }
 
-.download-btn:hover:not(.disabled):not(:disabled) {
-  background-color: #e9ecef;
-  border-color: #dee2e6;
+.download-btn:not(.disabled):not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  border-color: #d0d0d0;
 }
 
 .download-btn.disabled, .download-btn:disabled {
@@ -895,46 +897,47 @@ h1 {
   cursor: not-allowed;
 }
 
-/* Actions Section */
-.action-buttons {
+.btn-icon {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.action-btn {
-  display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  background-color: #f8f9fa;
-  border: 1px solid #e9ecef;
-  border-radius: 4px;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.btn-icon.project {
+  background-color: rgba(56, 176, 0, 0.1);
+  color: #38b000;
+}
+
+.btn-icon.model {
+  background-color: rgba(58, 134, 255, 0.1);
+  color: #3a86ff;
+}
+
+.btn-icon.csv {
+  background-color: rgba(240, 173, 78, 0.1);
+  color: #f0ad4e;
+}
+
+.btn-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.btn-title {
+  font-weight: 600;
   color: var(--text-color);
-  font-size: 0.875rem;
-  font-weight: 500;
-  text-decoration: none;
-  transition: all 0.2s;
+  font-size: 0.95rem;
 }
 
-.action-btn:hover {
-  transform: translateY(-2px);
-}
-
-.action-btn.secondary:hover {
-  background-color: #e9ecef;
-  border-color: #dee2e6;
-}
-
-.action-btn.primary {
-  background-color: var(--primary-color);
-  color: white;
-  border-color: var(--primary-color);
-}
-
-.action-btn.primary:hover {
-  background-color: var(--primary-dark);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+.btn-subtitle {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
 }
 
 /* Results Section */
@@ -944,7 +947,7 @@ h1 {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   padding: 1.5rem;
   margin-bottom: 1.5rem;
-  border-top: 4px solid #f0f4fa;
+  border-left: 4px solid #f0f4fa;
 }
 
 .results-header {
@@ -952,103 +955,20 @@ h1 {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1.5rem;
-  flex-wrap: wrap;
-  gap: 1rem;
+  border-bottom: 1px solid #f0f0f0;
+  padding-bottom: 1rem;
 }
 
 .results-header h2 {
-  font-size: 1.5rem;
+  font-size: 1.4rem;
   color: var(--secondary-color);
   margin: 0;
-  position: relative;
-  padding-left: 1rem;
 }
 
-.results-header h2::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  height: 100%;
-  width: 4px;
-  background-color: var(--primary-color);
-  border-radius: 2px;
-}
-
-.results-toolbar {
+.results-info {
   display: flex;
   align-items: center;
   gap: 1rem;
-  flex-wrap: wrap;
-}
-
-/* Page Size Dropdown - Styled like navbar dropdown */
-.page-size-dropdown {
-  position: relative;
-  display: inline-block;
-}
-
-.page-size-button {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem 1rem;
-  background-color: white;
-  border: 1px solid #dee2e6;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  color: var(--text-color);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.page-size-button:hover {
-  border-color: var(--primary-color);
-}
-
-.page-size-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 0.5rem);
-  background-color: white;
-  border-radius: 6px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-  width: 150px;
-  z-index: 100;
-  overflow: hidden;
-  opacity: 0;
-  transform: translateY(10px);
-  pointer-events: none;
-  transition: all 0.2s;
-}
-
-.page-size-dropdown:hover .page-size-menu {
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: all;
-}
-
-.page-size-menu button {
-  display: block;
-  width: 100%;
-  padding: 0.75rem 1rem;
-  text-align: left;
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 0.875rem;
-  color: var(--text-color);
-  transition: background-color 0.2s;
-}
-
-.page-size-menu button:hover {
-  background-color: #f8f9fa;
-}
-
-.page-size-menu button.active {
-  background-color: #f0f4fa;
-  color: var(--primary-color);
-  font-weight: 600;
 }
 
 .results-count {
@@ -1074,6 +994,8 @@ h1 {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.875rem;
+  table-layout: auto;
+  min-width: 100%;
 }
 
 .results-table th {
@@ -1082,19 +1004,51 @@ h1 {
   background-color: #f8f9fa;
   z-index: 10;
   border-bottom: 2px solid #e9ecef;
-  padding: 0.85rem 0.75rem;
-  text-align: left;
+  padding: 0;
   font-weight: 600;
   color: var(--secondary-color);
   text-transform: uppercase;
   font-size: 0.75rem;
   letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.header-button {
+  width: 100%;
+  height: 100%;
+  padding: 0.85rem 0.75rem;
+  text-align: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+  position: relative;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+.header-button:hover {
+  background-color: rgba(58, 134, 255, 0.05);
+}
+
+.sort-indicator {
+  display: inline-block;
+  color: var(--primary-color);
+  font-weight: bold;
 }
 
 .results-table td {
   padding: 0.85rem 0.75rem;
   border-bottom: 1px solid #f0f0f0;
   color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px; /* Limit max width of cells */
+  text-align: center; /* Center align content */
 }
 
 .results-table tr:last-child td {
@@ -1189,13 +1143,10 @@ h1 {
 
 /* Responsive Styles */
 @media (max-width: 992px) {
-  .info-grid {
-    grid-template-columns: 1fr;
-  }
-  
   .header-content {
     flex-direction: column;
     gap: 1rem;
+    align-items: flex-start;
   }
   
   .header-actions {
@@ -1210,34 +1161,29 @@ h1 {
     flex: 1;
   }
   
+  .info-row {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .download-row {
+    flex-direction: column;
+  }
+  
   .results-header {
     flex-direction: column;
     align-items: flex-start;
-  }
-  
-  .results-toolbar {
-    width: 100%;
-    justify-content: space-between;
-  }
-  
-  .search-box {
-    width: 100%;
+    gap: 1rem;
   }
 }
 
 @media (max-width: 768px) {
-  .results-toolbar {
-    flex-direction: column;
-    align-items: flex-start;
+  .table-wrapper {
+    overflow-x: auto;
   }
   
-  .search-box {
-    width: 100%;
-  }
-  
-  .table-controls {
-    width: 100%;
-    justify-content: space-between;
+  .results-table {
+    min-width: 600px;
   }
 }
 </style>
