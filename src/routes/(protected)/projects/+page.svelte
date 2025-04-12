@@ -4,25 +4,45 @@
   import api from '$lib/services/api';
   import userService from '$lib/services/user';
   import type { PagedResponse, ProjectSummary } from '$lib/types/project';
+  import { fade, fly } from 'svelte/transition';
   
-  // Variables for filtering
+  // Variables for filtering and state
   let projects: ProjectSummary[] = [];
   let allProjects: ProjectSummary[] = []; // Store all projects for client-side filtering
   let isLoading = true;
-  let error: string | null = null;
+  let loadingError: string | null = null;
   let currentPage = 1;
-  let pageSize = 20;
+  let pageSize = 60;
   let totalPages = 1;
   let totalCount = 0;
   let searchQuery = '';
   let userMap: Record<string, string> = {}; // Maps user IDs to usernames
   let viewMode: 'grid' | 'list' = 'grid';
   let sortOrder: 'name' | 'updated' | 'version' = 'updated';
+  let filterType: string = '';
+  
+  // For tracking which dropdown is open
+  let openMenuId: string | null = null;
   
   // Admin-specific properties
   let userFilter: string | null = null; // For admin to filter by user
   let allUsers: {id: string, username: string}[] = []; // List of users for admin to filter by
   let isLoadingUsers = false;
+  
+  // For more advanced filtering
+  let showFilters = false;
+  let modelTypes = new Set<string>();
+  let selectedModelTypes: string[] = [];
+  
+  // For more visual data
+  let projectsWithStats: (ProjectSummary & { 
+    color: string,
+    icon: string,
+    ownerName: string,
+    isOwner: boolean,
+    dateFormatted: string,
+    statusBadge: { text: string, color: string }
+  })[] = [];
   
   // Client-side search function
   function filterProjects(projects: ProjectSummary[], query: string): ProjectSummary[] {
@@ -33,6 +53,12 @@
       project.projectName.toLowerCase().includes(lowerQuery) || 
       project.modellingType.toLowerCase().includes(lowerQuery)
     );
+  }
+
+  // Client-side filter function
+  function applyTypeFilter(projects: ProjectSummary[], types: string[]): ProjectSummary[] {
+    if (!types.length) return projects;
+    return projects.filter(project => types.includes(project.modellingType));
   }
 
   // Client-side sort function
@@ -58,6 +84,11 @@
       filteredProjects = filterProjects(filteredProjects, searchQuery);
     }
     
+    // Apply model type filter
+    if (selectedModelTypes.length) {
+      filteredProjects = applyTypeFilter(filteredProjects, selectedModelTypes);
+    }
+    
     // Apply sorting
     filteredProjects = sortProjects(filteredProjects, sortOrder);
     
@@ -69,6 +100,9 @@
     // Apply pagination
     const startIndex = (currentPage - 1) * pageSize;
     projects = filteredProjects.slice(startIndex, startIndex + pageSize);
+    
+    // Enhance projects with visual data
+    enhanceProjectsWithVisualData();
   }
   
   // Function to load all users for admin filter dropdown
@@ -79,9 +113,6 @@
     try {
       // In a real app, you'd have an endpoint to get all users
       // Since we don't have one in the provided code, we'll create a workaround
-      // This would be replaced with an actual API call like:
-      // const response = await api.get('/api/users');
-      // allUsers = response.data;
       
       // For now, let's just add the current user
       if ($user) {
@@ -92,7 +123,6 @@
       }
       
       // We'll add any project owners we find while loading projects
-      // This is a workaround since we don't have a proper user list endpoint
     } catch (err) {
       console.error('Error loading users:', err);
     } finally {
@@ -103,7 +133,7 @@
   // Function to load projects with search, sort, and filter
   async function loadProjects() {
     isLoading = true;
-    error = null;
+    loadingError = null;
     
     try {
       // Prepare query parameters
@@ -149,6 +179,14 @@
       totalPages = response.data.totalPages;
       totalCount = response.data.totalCount;
       
+      // Collect all model types for filtering
+      projects.forEach(project => {
+        if (project.modellingType) {
+          modelTypes.add(project.modellingType);
+        }
+      });
+      modelTypes = new Set(modelTypes); // Trigger reactivity
+      
       // Collect all unique creator IDs
       const creatorIds = [...new Set(projects.map(p => p.createdBy))];
       
@@ -173,10 +211,13 @@
       // If we need client-side filtering, load all projects
       if (searchQuery && allProjects.length === 0) {
         await loadAllProjectsForFiltering();
+      } else {
+        // Enhance projects with visual data
+        enhanceProjectsWithVisualData();
       }
     } catch (err) {
       console.error('Error fetching projects:', err);
-      error = 'Failed to load projects. Please try again.';
+      loadingError = 'Failed to load projects. Please try again.';
     } finally {
       isLoading = false;
     }
@@ -202,6 +243,14 @@
         });
         
         allProjects = response.data.items;
+        
+        // Collect all model types for filtering
+        allProjects.forEach(project => {
+          if (project.modellingType) {
+            modelTypes.add(project.modellingType);
+          }
+        });
+        modelTypes = new Set(modelTypes); // Trigger reactivity
         
         // Immediately apply client-side filtering
         applyClientSideFilters();
@@ -325,6 +374,38 @@
     viewMode = mode;
   }
   
+  function toggleModelType(type: string) {
+    if (selectedModelTypes.includes(type)) {
+      selectedModelTypes = selectedModelTypes.filter(t => t !== type);
+    } else {
+      selectedModelTypes = [...selectedModelTypes, type];
+    }
+    
+    currentPage = 1; // Reset to first page
+    
+    // Apply filters
+    if (allProjects.length > 0) {
+      applyClientSideFilters();
+    } else {
+      loadProjects();
+    }
+  }
+  
+  function clearFilters() {
+    selectedModelTypes = [];
+    currentPage = 1;
+    
+    if (allProjects.length > 0) {
+      applyClientSideFilters();
+    } else {
+      loadProjects();
+    }
+  }
+  
+  function toggleFilters() {
+    showFilters = !showFilters;
+  }
+  
   function changePage(newPage: number) {
     if (newPage >= 1 && newPage <= totalPages) {
       currentPage = newPage;
@@ -336,6 +417,63 @@
         loadProjects();
       }
     }
+  }
+  
+  // Function to toggle dropdown menu
+  function toggleMenu(projectId: string) {
+    if (openMenuId === projectId) {
+      openMenuId = null; // Close the menu if it's already open
+    } else {
+      openMenuId = projectId; // Open the clicked menu
+    }
+  }
+  
+  // Function to close all menus (for outside clicks)
+  function closeAllMenus() {
+    openMenuId = null;
+  }
+  
+  // Function to handle delete project
+  function handleDeleteProject(projectId: string) {
+    // Just for demonstration - would need actual API call and confirmation
+    console.log('Delete project:', projectId);
+    // In a real app, you'd add a confirmation dialog here
+  }
+  
+  // Enhance projects with visual metadata
+  function enhanceProjectsWithVisualData() {
+    projectsWithStats = projects.map(project => {
+      // Generate consistent color based on project type
+      const color = getModelTypeColor(project.modellingType);
+      const icon = getModelTypeIcon(project.modellingType);
+      
+      // Format date for display
+      const dateFormatted = formatDate(project.updatedAt);
+      
+      // Determine if current user is owner
+      const isOwner = project.createdBy === $user?.id;
+      
+      // Owner name
+      const ownerName = userMap[project.createdBy] || 'Unknown User';
+      
+      // Status badge based on version
+      const statusBadge = getProjectStatusBadge(project);
+      
+      return {
+        ...project,
+        color,
+        icon,
+        dateFormatted,
+        isOwner,
+        ownerName,
+        statusBadge
+      };
+    });
+  }
+  
+  function getProjectStatusBadge(project: ProjectSummary): { text: string; color: string } {
+    // Since we're only showing version numbers now, we'll use a single color
+    return { text: `v${project.currentVersion}`, color: '#5c9fff' };
   }
   
   function formatDate(dateString: string): string {
@@ -368,22 +506,8 @@
   
   // Generate a color based on model type for consistency
   function getModelTypeColor(modelType: string): string {
-    // Simple hash function to generate consistent colors
-    let hash = 0;
-    for (let i = 0; i < modelType.length; i++) {
-      hash = modelType.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    
-    // Use primary color palette with slight variations
-    const colors = [
-      'var(--primary-color)',       // Primary blue
-      'var(--primary-dark)',        // Darker blue
-      '#00a3ff',                    // Sky blue
-      '#0081cb',                    // Ocean blue
-      '#5e72e4'                     // Indigo
-    ];
-    
-    return colors[Math.abs(hash) % colors.length];
+    // Using the specified color
+    return '#5c9fff';
   }
   
   // Get a material icon name based on modeling type
@@ -395,6 +519,8 @@
     if (lcModelType.includes('structural')) return 'layers';
     if (lcModelType.includes('analysis')) return 'analytics';
     if (lcModelType.includes('simulation')) return 'model_training';
+    if (lcModelType.includes('test')) return 'science';
+    if (lcModelType.includes('pilot')) return 'flight_takeoff';
     
     // Default icon
     return 'category';
@@ -403,6 +529,7 @@
   // Check if current user is admin (for template usage)
   $: isAdmin = $user?.roles?.includes('Admin') || false;
   
+  // No need for mouse tracking now
   onMount(() => {
     // If admin, load users for filter dropdown
     if ($user?.roles?.includes('Admin')) {
@@ -417,6 +544,17 @@
     if (savedViewMode === 'grid' || savedViewMode === 'list') {
       viewMode = savedViewMode;
     }
+    
+    // Add click listener to close dropdowns when clicking outside
+    document.addEventListener('click', (event) => {
+      if (openMenuId && event.target) {
+        // Type assertion to HTMLElement since EventTarget doesn't have closest method
+        const target = event.target as HTMLElement;
+        if (!target.closest('.action-menu')) {
+          openMenuId = null;
+        }
+      }
+    });
   });
   
   // Save view mode preference when it changes
@@ -434,12 +572,12 @@
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </svelte:head>
 
-<div class="page-header">
-  <div class="container">
+<div class="page-container">
+  <header class="page-header">
     <div class="header-content">
-      <div class="header-left">
+      <div>
         <h1>Projects</h1>
-        <p class="subtitle">
+        <p class="text-muted">
           {#if totalCount > 0}
             Showing {projects.length} of {totalCount} project{totalCount !== 1 ? 's' : ''}
           {:else}
@@ -449,240 +587,285 @@
       </div>
       <div class="header-actions">
         <a href="/projects/new" class="btn-primary">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"></line>
-            <line x1="5" y1="12" x2="19" y2="12"></line>
-          </svg>
+          <span class="material-icons">add</span>
           Create Project
         </a>
       </div>
     </div>
-  </div>
-</div>
+  </header>
 
-<div class="container projects-container">
-  <div class="toolbar">
-    <div class="toolbar-left">
-      <div class="search-box">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="11" cy="11" r="8"></circle>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-        </svg>
+  <div class="controls-container">
+    <div class="search-controls">
+      <div class="search-wrapper">
         <input 
           type="text" 
           bind:value={searchQuery} 
           placeholder="Search projects..." 
           on:keyup={(e) => e.key === 'Enter' && handleSearch()}
+          class="search-input" 
         />
+        <button class="search-button" on:click={handleSearch}>
+          <span class="material-icons">search</span>
+        </button>
         {#if searchQuery}
-          <button class="clear-search" on:click={clearSearch} aria-label="Clear search">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
+          <button class="clear-button" on:click={clearSearch}>
+            <span class="material-icons">close</span>
           </button>
         {/if}
       </div>
       
-      <!-- User filter dropdown for admin users -->
-      {#if isAdmin}
-        <div class="user-filter">
-          <label for="user-filter">Filter by User:</label>
-          <select 
-            id="user-filter" 
-            on:change={(e) => setUserFilter((e.target as HTMLSelectElement).value || null)}
-            value={userFilter || ""}
+      <div class="controls-right">
+        <!-- Filter button - minmalistic -->
+        <button 
+          class="icon-button filter-button tooltip" 
+          class:active={showFilters} 
+          on:click={toggleFilters}
+          data-tooltip="Filters"
+        >
+          <span class="material-icons">filter_alt</span>
+          {#if selectedModelTypes.length > 0}
+            <span class="count-badge">{selectedModelTypes.length}</span>
+          {/if}
+        </button>
+        
+        <!-- User filter dropdown for admin users -->
+        {#if isAdmin}
+          <div class="user-filter">
+            <select 
+              on:change={(e) => setUserFilter((e.target as HTMLSelectElement).value || null)}
+              value={userFilter || ""}
+              class="user-select"
+            >
+              <option value="">All Users</option>
+              {#if $user}<option value={$user.id}>My Projects</option>{/if}
+              {#each allUsers.filter(u => $user && u.id !== $user.id) as userOption}
+                <option value={userOption.id}>{userOption.username}</option>
+              {/each}
+            </select>
+          </div>
+        {/if}
+        
+        <!-- View mode toggle - minimalistic -->
+        <div class="view-toggle">
+          <button 
+            class="icon-button tooltip" 
+            class:active={viewMode === 'grid'} 
+            on:click={() => setViewMode('grid')}
+            data-tooltip="Grid view"
           >
-            <option value="">All Users</option>
-            {#if $user}<option value={$user.id}>My Projects</option>{/if}
-            {#each allUsers.filter(u => $user && u.id !== $user.id) as userOption}
-              <option value={userOption.id}>{userOption.username}</option>
-            {/each}
-          </select>
+            <span class="material-icons">grid_view</span>
+          </button>
+          <button 
+            class="icon-button tooltip" 
+            class:active={viewMode === 'list'} 
+            on:click={() => setViewMode('list')}
+            data-tooltip="List view"
+          >
+            <span class="material-icons">view_list</span>
+          </button>
         </div>
-      {/if}
+      </div>
     </div>
     
-    <div class="toolbar-actions">
-      <div class="sort-options">
-        <span class="sort-label">Sort by:</span>
-        <button 
-          class="sort-button" 
-          class:active={sortOrder === 'name'}
-          on:click={() => setSortOrder('name')}
-        >
-          Name
-        </button>
-        <button 
-          class="sort-button" 
-          class:active={sortOrder === 'updated'}
-          on:click={() => setSortOrder('updated')}
-        >
-          Updated
-        </button>
-        <button 
-          class="sort-button" 
-          class:active={sortOrder === 'version'}
-          on:click={() => setSortOrder('version')}
-        >
-          Version
-        </button>
+    {#if showFilters}
+      <div class="filters-panel">
+        <div class="filter-content">
+          <div class="filter-section">
+            <div class="filter-options">
+              {#each [...modelTypes] as type}
+                <button 
+                  class="filter-chip" 
+                  class:selected={selectedModelTypes.includes(type)}
+                  on:click={() => toggleModelType(type)}
+                >
+                  {type}
+                </button>
+              {/each}
+            </div>
+          </div>
+          
+          <div class="filter-section">
+            <div class="sort-options">
+              <button 
+                class="sort-chip"
+                class:selected={sortOrder === 'name'}
+                on:click={() => setSortOrder('name')}
+              >
+                Name
+              </button>
+              <button 
+                class="sort-chip"
+                class:selected={sortOrder === 'updated'}
+                on:click={() => setSortOrder('updated')}
+              >
+                Last Updated
+              </button>
+              <button 
+                class="sort-chip"
+                class:selected={sortOrder === 'version'}
+                on:click={() => setSortOrder('version')}
+              >
+                Version
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        {#if selectedModelTypes.length > 0}
+          <div class="filter-actions">
+            <button class="clear-button" on:click={clearFilters}>
+              Clear All
+            </button>
+          </div>
+        {/if}
       </div>
-      
-      <div class="view-toggle">
-        <button 
-          class="view-button" 
-          class:active={viewMode === 'grid'} 
-          on:click={() => setViewMode('grid')}
-          aria-label="Grid view"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="7" height="7"></rect>
-            <rect x="14" y="3" width="7" height="7"></rect>
-            <rect x="14" y="14" width="7" height="7"></rect>
-            <rect x="3" y="14" width="7" height="7"></rect>
-          </svg>
-        </button>
-        <button 
-          class="view-button" 
-          class:active={viewMode === 'list'} 
-          on:click={() => setViewMode('list')}
-          aria-label="List view"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="8" y1="6" x2="21" y2="6"></line>
-            <line x1="8" y1="12" x2="21" y2="12"></line>
-            <line x1="8" y1="18" x2="21" y2="18"></line>
-            <line x1="3" y1="6" x2="3.01" y2="6"></line>
-            <line x1="3" y1="12" x2="3.01" y2="12"></line>
-            <line x1="3" y1="18" x2="3.01" y2="18"></line>
-          </svg>
-        </button>
-      </div>
-    </div>
+    {/if}
   </div>
-  
+
   {#if isLoading}
     <div class="loading-container">
       <div class="loader"></div>
       <p>Loading projects...</p>
     </div>
-  {:else if error}
-    <div class="error-message">
-      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10"></circle>
-        <line x1="12" y1="8" x2="12" y2="12"></line>
-        <line x1="12" y1="16" x2="12.01" y2="16"></line>
-      </svg>
-      <p>{error}</p>
+  {:else if loadingError}
+    <div class="error-container">
+      <span class="material-icons error-icon">error_outline</span>
+      <p>{loadingError}</p>
       <button class="btn-primary" on:click={loadProjects}>Try Again</button>
     </div>
-  {:else if projects.length === 0}
+  {:else if projectsWithStats.length === 0}
     <div class="empty-state">
-      <div class="empty-illustration">
-        <svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="empty-icon">
-          <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
-          <polyline points="13 2 13 9 20 9"></polyline>
-        </svg>
+      <div class="empty-icon-container">
+        <span class="material-icons empty-icon">article</span>
       </div>
       <h2>No Projects Found</h2>
-      {#if searchQuery}
-        <p>No projects matched your search criteria. Try a different query or clear the search.</p>
-        <button class="btn-primary" on:click={clearSearch}>Clear Search</button>
+      {#if searchQuery || selectedModelTypes.length > 0}
+        <p>No projects matched your search criteria. Try a different query or clear the filters.</p>
+        <div class="empty-actions">
+          {#if searchQuery}
+            <button class="btn-secondary" on:click={clearSearch}>Clear Search</button>
+          {/if}
+          {#if selectedModelTypes.length > 0}
+            <button class="btn-secondary" on:click={clearFilters}>Clear Filters</button>
+          {/if}
+        </div>
       {:else}
         <p>You don't have any projects yet. Create your first project to get started.</p>
-        <a href="/projects/new" class="btn-primary">Create Project</a>
+        <a href="/projects/new" class="btn-primary">Create First Project</a>
       {/if}
     </div>
   {:else}
+    <!-- Grid View -->
     {#if viewMode === 'grid'}
       <div class="projects-grid">
-        {#each projects as project}
-          <div class="project-card" class:is-owner={isOwnedByCurrentUser(project.createdBy)}>
-            <div class="project-header">
-              <div class="model-type" style="--model-color: {getModelTypeColor(project.modellingType)}">
-                <span class="type-label">{project.modellingType}</span>
-              </div>
-              <div class="version-badge">v{project.currentVersion}</div>
+        {#each projectsWithStats as project (project.id)}
+          <div class="project-card" class:owner-card={project.isOwner} transition:fade={{ duration: 150 }}>
+            <div class="card-header">
+              <!-- Moved project name to header -->
+              <h3 class="project-name">
+                <a href={`/projects/${project.id}`}>{project.projectName}</a>
+              </h3>
+              <div class="version-tag">v{project.currentVersion}</div>
             </div>
             
-            <h3 class="project-name">
-              <a href={`/projects/${project.id}`}>{project.projectName}</a>
-            </h3>
-            
-            <div class="project-meta">
-              <div class="meta-item">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                  <circle cx="9" cy="7" r="4"></circle>
-                </svg>
-                <span>{userMap[project.createdBy] || 'Unknown User'}</span>
-              </div>
-              <div class="meta-item">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
-                <span>{formatDate(project.updatedAt)}</span>
+            <div class="card-body">
+              <div class="project-type">{project.modellingType}</div>
+              
+              <div class="project-meta">
+                <div class="meta-item">
+                  <span class="material-icons meta-icon">person</span>
+                  <span>{project.ownerName}</span>
+                </div>
+                <div class="meta-item">
+                  <span class="material-icons meta-icon">update</span>
+                  <span>{project.dateFormatted}</span>
+                </div>
               </div>
             </div>
             
-            <div class="project-actions">
-              <a href={`/projects/${project.id}`} class="action-button primary">
-                View Project
-              </a>
-              <div class="action-dropdown">
-                <button class="action-button icon" aria-label="More options">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="1"></circle>
-                    <circle cx="19" cy="12" r="1"></circle>
-                    <circle cx="5" cy="12" r="1"></circle>
-                  </svg>
+            <div class="card-actions">
+              <a href={`/projects/${project.id}`} class="view-link">View</a>
+              <div class="action-menu">
+                <button class="menu-trigger" on:click={() => toggleMenu(project.id)}>
+                  <span class="material-icons">more_horiz</span>
                 </button>
-                <!-- Dropdown menu would go here -->
+                {#if openMenuId === project.id}
+                  <div class="menu-dropdown">
+                    {#if project.isOwner || isAdmin}
+                      <a href={`/projects/${project.id}/edit`} class="menu-item">
+                        <span class="material-icons">edit</span>
+                        <span>Edit</span>
+                      </a>
+                      <button class="menu-item danger" on:click={() => handleDeleteProject(project.id)}>
+                        <span class="material-icons">delete</span>
+                        <span>Delete</span>
+                      </button>
+                    {/if}
+                  </div>
+                {/if}
               </div>
             </div>
           </div>
         {/each}
       </div>
     {:else}
+      <!-- List View -->
       <div class="projects-list">
         <div class="list-header">
-          <span class="list-cell name">Project Name</span>
-          <span class="list-cell type">Type</span>
-          <span class="list-cell owner">Owner</span>
-          <span class="list-cell version">Version</span>
-          <span class="list-cell updated">Last Updated</span>
-          <span class="list-cell actions">Actions</span>
+          <div class="list-cell project-info">Project</div>
+          <div class="list-cell modeling-type">Type</div>
+          <div class="list-cell owner">Owner</div>
+          <div class="list-cell updated">Updated</div>
+          <div class="list-cell actions">Actions</div>
         </div>
         
-        {#each projects as project}
-          <div class="list-row" class:is-owner={isOwnedByCurrentUser(project.createdBy)}>
-            <div class="list-cell name">
-              <a href={`/projects/${project.id}`}>{project.projectName}</a>
-            </div>
-            <div class="list-cell type">
-              <div class="model-type small" style="--model-color: {getModelTypeColor(project.modellingType)}">
-                <span class="type-label">{project.modellingType}</span>
+        {#each projectsWithStats as project (project.id)}
+          <div class="list-row" class:owner-row={project.isOwner} transition:fade={{ duration: 150 }}>
+            <div class="list-cell project-info">
+              <div class="project-info-content">
+                <div class="project-details">
+                  <a href={`/projects/${project.id}`} class="project-link">{project.projectName}</a>
+                  <span class="version-indicator">v{project.currentVersion}</span>
+                </div>
               </div>
             </div>
+            
+            <div class="list-cell modeling-type">
+              <span class="model-type-pill">
+                {project.modellingType}
+              </span>
+            </div>
+            
             <div class="list-cell owner">
-              {userMap[project.createdBy] || 'Unknown User'}
+              <div class="owner-info">
+                <div class="owner-avatar">
+                  {project.ownerName.charAt(0).toUpperCase()}
+                </div>
+                <span class="owner-name">{project.ownerName}</span>
+              </div>
             </div>
-            <div class="list-cell version">
-              <div class="version-badge small">v{project.currentVersion}</div>
-            </div>
+            
             <div class="list-cell updated">
-              {formatDate(project.updatedAt)}
+              <span class="date-info">
+                {project.dateFormatted}
+              </span>
             </div>
+            
             <div class="list-cell actions">
-              <div class="list-actions">
-                <a href={`/projects/${project.id}`} class="action-button small">
-                  View
+              <div class="action-buttons">
+                <a href={`/projects/${project.id}`} class="action-button list-tooltip" data-tooltip="View Project">
+                  <span class="material-icons">visibility</span>
                 </a>
-                <a href={`/projects/${project.id}/versions`} class="action-button small">
-                  Versions
-                </a>
+                
+                {#if project.isOwner || isAdmin}
+                  <a href={`/projects/${project.id}/edit`} class="action-button list-tooltip" data-tooltip="Edit Project">
+                    <span class="material-icons">edit</span>
+                  </a>
+                  <!-- Direct delete button instead of three-dot menu in list view, with same styling as other action buttons -->
+                  <button class="action-button list-tooltip" style="border: none;" data-tooltip="Delete Project" on:click={() => handleDeleteProject(project.id)}>
+                    <span class="material-icons">delete</span>
+                  </button>
+                {/if}
               </div>
             </div>
           </div>
@@ -694,63 +877,70 @@
     {#if totalPages > 1}
       <div class="pagination">
         <button 
-          class="pagination-btn" 
-          disabled={currentPage === 1} 
-          on:click={() => changePage(currentPage - 1)}
+          class="pagination-button tooltip"
+          on:click={() => changePage(1)}
+          disabled={currentPage === 1}
+          data-tooltip="First Page"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="15 18 9 12 15 6"></polyline>
-          </svg>
-          Previous
+          <span class="material-icons">first_page</span>
         </button>
         
-        <div class="pagination-pages">
+        <button 
+          class="pagination-button tooltip"
+          on:click={() => changePage(currentPage - 1)}
+          disabled={currentPage === 1}
+          data-tooltip="Previous Page"
+        >
+          <span class="material-icons">chevron_left</span>
+        </button>
+        
+        <div class="page-numbers">
           {#if totalPages <= 7}
-            {#each Array(totalPages) as _, index}
+            {#each Array(totalPages) as _, i}
               <button 
-                class="pagination-btn page-number" 
-                class:active={currentPage === index + 1}
-                on:click={() => changePage(index + 1)}
+                class="page-number" 
+                class:active={currentPage === i + 1}
+                on:click={() => changePage(i + 1)}
               >
-                {index + 1}
+                {i + 1}
               </button>
             {/each}
           {:else}
-            <!-- Show first page -->
+            <!-- First page always shown -->
             <button 
-              class="pagination-btn page-number" 
+              class="page-number" 
               class:active={currentPage === 1}
               on:click={() => changePage(1)}
             >
               1
             </button>
             
-            <!-- Show ellipsis if needed -->
+            <!-- Show ellipsis if we're not at the beginning -->
             {#if currentPage > 3}
-              <span class="pagination-ellipsis">...</span>
+              <span class="page-ellipsis">...</span>
             {/if}
             
-            <!-- Show pages around current page -->
-            {#each Array(5) as _, index}
-              {#if currentPage - 2 + index > 1 && currentPage - 2 + index < totalPages}
+            <!-- Pages around current page -->
+            {#each Array(Math.min(5, totalPages)).fill(0) as _, i}
+              {#if currentPage - 2 + i > 1 && currentPage - 2 + i < totalPages}
                 <button 
-                  class="pagination-btn page-number" 
-                  class:active={currentPage === currentPage - 2 + index}
-                  on:click={() => changePage(currentPage - 2 + index)}
+                  class="page-number" 
+                  class:active={currentPage === currentPage - 2 + i}
+                  on:click={() => changePage(currentPage - 2 + i)}
                 >
-                  {currentPage - 2 + index}
+                  {currentPage - 2 + i}
                 </button>
               {/if}
             {/each}
             
-            <!-- Show ellipsis if needed -->
+            <!-- Show ellipsis if we're not at the end -->
             {#if currentPage < totalPages - 2}
-              <span class="pagination-ellipsis">...</span>
+              <span class="page-ellipsis">...</span>
             {/if}
             
-            <!-- Show last page -->
+            <!-- Last page always shown -->
             <button 
-              class="pagination-btn page-number" 
+              class="page-number" 
               class:active={currentPage === totalPages}
               on:click={() => changePage(totalPages)}
             >
@@ -760,26 +950,42 @@
         </div>
         
         <button 
-          class="pagination-btn" 
-          disabled={currentPage === totalPages} 
+          class="pagination-button tooltip"
           on:click={() => changePage(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          data-tooltip="Next Page"
         >
-          Next
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="9 18 15 12 9 6"></polyline>
-          </svg>
+          <span class="material-icons">chevron_right</span>
         </button>
+        
+        <button 
+          class="pagination-button tooltip"
+          on:click={() => changePage(totalPages)}
+          disabled={currentPage === totalPages}
+          data-tooltip="Last Page"
+        >
+          <span class="material-icons">last_page</span>
+        </button>
+        
+        <div class="pagination-info">
+          <span>Page {currentPage} of {totalPages}</span>
+        </div>
       </div>
     {/if}
   {/if}
 </div>
 
 <style>
-  /* Page Header */
+  /* ===== Main Layout ===== */
+  .page-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0.8rem;
+  }
+  
+  /* ===== Page Header ===== */
   .page-header {
-    background-color: white;
-    padding: 2rem 0;
-    border-bottom: 1px solid #e9ecef;
+    margin-bottom: 1rem;
   }
   
   .header-content {
@@ -789,617 +995,989 @@
   }
   
   h1 {
-    font-size: 2.25rem;
-    color: #2b3a67;
+    font-size: 1.5rem;
     margin: 0;
-    margin-bottom: 0.5rem;
-    font-weight: 700;
+    color: #1e3a8a;
+    font-weight: 500;
   }
   
-  .subtitle {
-    color: #6c757d;
-    margin: 0;
+  .text-muted {
+    color: #64748b;
+    margin: 0.2rem 0 0;
+    font-size: 0.75rem;
   }
   
   .header-actions {
     display: flex;
-    gap: 1rem;
+    gap: 0.4rem;
   }
   
   .btn-primary {
-    background-color: #3a86ff;
+    background-color: #5c9fff;
     color: white;
-    padding: 0.75rem 1.5rem;
-    border-radius: 4px;
-    border: none;
-    font-weight: 600;
-    font-size: 0.95rem;
-    cursor: pointer;
-    text-decoration: none;
+    padding: 0.35rem 0.7rem;
+    border-radius: 3px;
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    transition: all 0.2s ease;
+    gap: 0.3rem;
+    font-weight: 400;
+    text-decoration: none;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    font-size: 0.8rem;
   }
   
   .btn-primary:hover {
-    background-color: #2667cc;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    background-color: #1d4ed8;
   }
   
-  /* Projects Container */
-  .projects-container {
-    padding: 2rem 0;
-  }
-  
-  /* Toolbar */
-  .toolbar {
-    display: flex;
-    justify-content: space-between;
+  .btn-secondary {
+    background-color: #f1f5f9;
+    color: #334155;
+    padding: 0.35rem 0.7rem;
+    border-radius: 3px;
+    display: inline-flex;
     align-items: center;
-    margin-bottom: 2rem;
-    background-color: white;
-    padding: 1.5rem;
-    border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-  }
-  
-  .toolbar-left {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1rem;
-    align-items: center;
-    flex: 1;
-  }
-  
-  .search-box {
-    position: relative;
-    width: 300px;
-  }
-  
-  .search-box svg {
-    position: absolute;
-    left: 1rem;
-    top: 50%;
-    transform: translateY(-50%);
-    color: #6c757d;
-  }
-  
-  .search-box input {
-    width: 100%;
-    padding: 0.75rem 1rem 0.75rem 3rem;
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
-    font-size: 1rem;
-    transition: all 0.2s ease;
-    background-color: #f8f9fa;
-  }
-  
-  .search-box input:focus {
-    border-color: #3a86ff;
-    box-shadow: 0 0 0 3px rgba(58, 134, 255, 0.1);
-    outline: none;
-    background-color: white;
-  }
-  
-  .clear-search {
-    position: absolute;
-    right: 0.75rem;
-    top: 50%;
-    transform: translateY(-50%);
-    background: none;
+    gap: 0.3rem;
+    font-weight: 400;
+    text-decoration: none;
     border: none;
-    color: #6c757d;
     cursor: pointer;
-    padding: 0.25rem;
-    border-radius: 50%;
-    transition: background-color 0.2s ease;
+    transition: all 0.15s ease;
+    font-size: 0.8rem;
   }
   
-  .clear-search:hover {
-    background-color: rgba(0, 0, 0, 0.05);
+  .btn-secondary:hover {
+    background-color: #e2e8f0;
   }
   
-  /* User Filter */
-  .user-filter {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    flex: 1;
-  }
-  
-  .user-filter label {
-    color: #2b3a67;
-    font-size: 0.9rem;
-    font-weight: 500;
-  }
-  
-  .user-filter select {
-    padding: 0.75rem 1rem;
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
-    background-color: #f8f9fa;
-    font-size: 0.9rem;
-    color: #2b3a67;
-    cursor: pointer;
-    flex-grow: 1;
-    max-width: 250px;
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236c757d' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 0.75rem center;
-    background-size: 16px;
-  }
-  
-  .user-filter select:focus {
-    border-color: #3a86ff;
-    box-shadow: 0 0 0 3px rgba(58, 134, 255, 0.1);
-    outline: none;
+  /* ===== Search and Filter Controls ===== */
+  .controls-container {
+    margin-bottom: 1rem;
     background-color: white;
-  }
-  
-  .toolbar-actions {
-    display: flex;
-    align-items: center;
-    gap: 1.5rem;
-  }
-  
-  .sort-options {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    background-color: #f8f9fa;
-    padding: 0.5rem;
-    border-radius: 6px;
-    border: 1px solid #e9ecef;
-  }
-  
-  .sort-label {
-    color: #2b3a67;
-    font-size: 0.875rem;
-    font-weight: 500;
-    margin-left: 0.5rem;
-  }
-  
-  .sort-button {
-    background: none;
-    border: none;
-    color: #6c757d;
-    font-size: 0.875rem;
-    font-weight: 500;
-    cursor: pointer;
-    padding: 0.5rem 0.75rem;
     border-radius: 4px;
-    transition: all 0.2s ease;
-  }
-  
-  .sort-button.active {
-    color: white;
-    background-color: #3a86ff;
-  }
-  
-  .sort-button:hover:not(.active) {
-    background-color: rgba(0, 0, 0, 0.05);
-  }
-  
-  .view-toggle {
-    display: flex;
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
     overflow: hidden;
   }
   
-  .view-button {
-    background: none;
-    border: none;
+  .search-controls {
+    display: flex;
     padding: 0.5rem;
+    gap: 0.5rem;
+    align-items: center;
+    justify-content: space-between;
+  }
+  
+  .search-wrapper {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    min-width: 200px;
+    max-width: 500px;
+  }
+  
+  .search-input {
+    width: 100%;
+    padding: 0.4rem 0.6rem;
+    border-radius: 4px 0 0 4px;
+    border: 1px solid #e2e8f0;
+    border-right: none;
+    font-size: 0.8rem;
+    background-color: #f8fafc;
+    height: 32px;
+  }
+  
+  .search-input:focus {
+    outline: none;
+    border-color: #e2e8f0;
+    background-color: white;
+  }
+  
+  .search-button {
+    height: 32px;
+    padding: 0 0.6rem;
+    border: 1px solid #e2e8f0;
+    border-left: none;
+    border-radius: 0 4px 4px 0;
+    background-color: #f8fafc;
+    color: #64748b;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #6c757d;
-    transition: all 0.2s ease;
   }
   
-  .view-button.active {
-    background-color: #3a86ff;
+  .search-button:hover {
+    background-color: #e2e8f0;
+  }
+  
+  .search-button .material-icons {
+    font-size: 1rem;
+  }
+  
+  .clear-button {
+    position: absolute;
+    right: 2.5rem;
+    background: none;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 0.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .clear-button:hover {
+    color: #64748b;
+  }
+  
+  .clear-button .material-icons {
+    font-size: 0.9rem;
+  }
+  
+  .controls-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  .icon-button {
+    height: 32px;
+    width: 32px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    position: relative;
+  }
+  
+  .icon-button .material-icons {
+    font-size: 1rem;
+  }
+  
+  .icon-button:hover {
+    background-color: #e2e8f0;
+  }
+  
+  .icon-button.active {
+    background-color: #5c9fff;
+    border-color: #5c9fff;
     color: white;
   }
   
-  .view-button:hover:not(.active) {
-    background-color: rgba(0, 0, 0, 0.05);
+  .count-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    background-color: #5c9fff;
+    color: white;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 600;
   }
   
-  /* Grid View */
+  .user-filter {
+    min-width: 120px;
+    height: 32px;
+  }
+  
+  .user-select {
+    width: 100%;
+    height: 100%;
+    padding: 0 0.6rem;
+    border-radius: 4px;
+    border: 1px solid #e2e8f0;
+    background-color: #f8fafc;
+    appearance: none;
+    font-size: 0.8rem;
+    color: #64748b;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    background-size: 0.8rem;
+    cursor: pointer;
+  }
+  
+  .user-select:focus {
+    outline: none;
+    border-color: #5c9fff;
+  }
+  
+  .view-toggle {
+    display: flex;
+    height: 32px;
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+  }
+  
+  .view-toggle .icon-button {
+    border: none;
+    border-radius: 0;
+    width: 32px;
+    height: 30px;
+  }
+  
+  .view-toggle .icon-button.active {
+    background-color: #5c9fff;
+    color: white;
+  }
+  
+  /* ===== Filters Panel ===== */
+  .filters-panel {
+    padding: 0.5rem;
+    border-top: 1px solid #e2e8f0;
+    background-color: #f8fafc;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  
+  .filter-content {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  
+  .filter-section {
+    margin-bottom: 0.5rem;
+  }
+  
+  .filter-options, .sort-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+  }
+  
+  .filter-chip, .sort-chip {
+    padding: 0.3rem 0.5rem;
+    background-color: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  
+  .filter-chip:hover, .sort-chip:hover {
+    background-color: #e2e8f0;
+  }
+  
+  .filter-chip.selected, .sort-chip.selected {
+    background-color: #5c9fff;
+    border-color: #5c9fff;
+    color: white;
+  }
+  
+  .filter-actions {
+    margin-top: 0.5rem;
+    display: flex;
+    justify-content: flex-end;
+  }
+  
+  .clear-button {
+    background: none;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 0.3rem 0.5rem;
+    transition: all 0.15s ease;
+  }
+  
+  .clear-button:hover {
+    color: #5c9fff;
+    text-decoration: underline;
+  }
+  
+  /* ===== Loading, Error, Empty States ===== */
+  .loading-container, .error-container, .empty-state {
+    padding: 3rem 1.5rem;
+    text-align: center;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-bottom: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  
+  .loader {
+    border: 3px solid rgba(92, 159, 255, 0.2);
+    border-left-color: #5c9fff;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  
+  .error-icon, .empty-icon {
+    font-size: 2.5rem;
+    color: #6c757d;
+    opacity: 0.5;
+  }
+  
+  .error-container p {
+    color: #dc2626;
+    font-weight: 500;
+    font-size: 0.9rem;
+  }
+  
+  .empty-icon-container {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background-color: #f1f5f9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .empty-state h2 {
+    margin: 0;
+    color: #1e3a8a;
+    font-size: 1.3rem;
+  }
+  
+  .empty-state p {
+    color: #6c757d;
+    max-width: 500px;
+    margin: 0 auto;
+    font-size: 0.9rem;
+  }
+  
+  .empty-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+  }
+  
+  /* ===== Grid View ===== */
   .projects-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    gap: 1.25rem;
-    margin-bottom: 2rem;
+    gap: 0.8rem;
+    margin-bottom: 1.2rem;
   }
   
   .project-card {
     background-color: white;
-    border-radius: 10px;
-    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+    border-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
     overflow: hidden;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-    display: flex;
-    flex-direction: column;
+    transition: all 0.15s ease;
+    border: 1px solid #e2e8f0;
     position: relative;
-    border: none;
   }
   
   .project-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   }
   
-  .project-card.is-owner {
-    border-left: 4px solid #3a86ff;
+  .owner-card {
+    border-left: 2px solid #5c9fff;
   }
   
-  .project-header {
-    padding: 1.25rem;
+  .card-header {
+    padding: 0.6rem;
+    background-color: #f8fafc;
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
-    border-bottom: 1px solid #f8f9fa;
+    align-items: center;
+  }
+
+  .card-header .project-name {
+    margin: 0;
+    font-size: 0.9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    padding-right: 0.5rem;
   }
   
-  .model-type {
-    display: inline-block;
-    padding: 0.4rem 0.8rem;
-    background-color: var(--model-color, #3a86ff);
-    color: white;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-weight: 600;
-  }
-  
-  .model-type.small {
-    padding: 0.25rem 0.5rem;
+  .version-tag {
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
     font-size: 0.7rem;
+    font-weight: 500;
+    background-color: white;
+    color: #5c9fff;
   }
   
-  .version-badge {
-    background-color: #f8f9fa;
-    color: #2b3a67;
-    padding: 0.4rem 0.8rem;
-    border-radius: 6px;
-    font-size: 0.8rem;
-    font-weight: 600;
-  }
-  
-  .version-badge.small {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.7rem;
+  .card-body {
+    padding: 0.6rem;
   }
   
   .project-name {
-    padding: 1.25rem 1.25rem 0.5rem;
-    margin: 0;
-    font-size: 1.2rem;
-    font-weight: 600;
+    margin: 0 0 0.3rem;
+    font-size: 0.9rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   
   .project-name a {
-    color: #2b3a67;
+    color: #1e3a8a;
     text-decoration: none;
-    transition: color 0.2s ease;
+    transition: color 0.15s ease;
   }
   
   .project-name a:hover {
-    color: #3a86ff;
+    color: #5c9fff;
+  }
+  
+  .project-type {
+    color: #64748b;
+    font-size: 0.75rem;
+    margin-bottom: 0.5rem;
   }
   
   .project-meta {
-    padding: 0 1.25rem 1.25rem;
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
+    flex-direction: column;
+    gap: 0.3rem;
   }
   
   .meta-item {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    color: #6c757d;
-    font-size: 0.875rem;
+    gap: 0.3rem;
+    color: #64748b;
+    font-size: 0.7rem;
   }
   
-  .project-actions {
-    padding: 1.25rem;
+  .meta-icon {
+    font-size: 0.8rem;
+    color: #94a3b8;
+  }
+  
+  .card-actions {
+    padding: 0.5rem 0.6rem;
+    border-top: 1px solid #f1f5f9;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background-color: #f8f9fa;
-    margin-top: auto;
   }
   
-  .action-button {
-    padding: 0.6rem 1rem;
-    border-radius: 6px;
-    font-weight: 500;
-    font-size: 0.875rem;
+  .view-link {
+    color: #5c9fff;
     text-decoration: none;
-    display: inline-flex;
+    font-size: 0.75rem;
+    font-weight: 500;
+    transition: all 0.15s ease;
+  }
+  
+  .view-link:hover {
+    text-decoration: underline;
+  }
+  
+  .action-menu {
+    position: relative;
+  }
+  
+  .menu-trigger {
+    width: 24px;
+    height: 24px;
+    border-radius: 3px;
+    display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
-    transition: all 0.2s ease;
-    cursor: pointer;
+    background: none;
     border: none;
+    color: #64748b;
+    cursor: pointer;
   }
   
-  .action-button.small {
-    padding: 0.35rem 0.75rem;
+  .menu-trigger:hover {
+    background-color: #f1f5f9;
+  }
+  
+  .menu-trigger .material-icons {
+    font-size: 0.9rem;
+  }
+  
+  .menu-dropdown {
+    position: absolute;
+    right: 0;
+    bottom: 28px; /* Position above the trigger button */
+    background-color: white;
+    border-radius: 3px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    width: 160px;
+    z-index: 1000;
+    overflow: visible;
+    border: 1px solid #e2e8f0;
+  }
+  
+  /* Remove hover showing dropdown - now only shown on click */
+  
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.7rem;
+    color: #1e3a8a;
+    text-decoration: none;
+    cursor: pointer;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    font-size: 0.75rem;
+    font-family: inherit;
+  }
+  
+  .menu-item .material-icons {
     font-size: 0.8rem;
   }
   
-  .action-button.primary {
-    background-color: #3a86ff;
-    color: white;
+  .menu-item:hover {
+    background-color: #f1f5f9;
   }
   
-  .action-button.primary:hover {
-    background-color: #2667cc;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(58, 134, 255, 0.2);
+  .menu-item.danger {
+    color: #dc2626;
   }
   
-  .action-button.icon {
-    padding: 0.5rem;
-    background-color: transparent;
-    color: #6c757d;
+  .menu-item.danger:hover {
+    background-color: rgba(220, 38, 38, 0.1);
   }
   
-  .action-button.icon:hover {
-    background-color: rgba(0, 0, 0, 0.05);
-  }
-  
-  /* List View */
+  /* ===== List View ===== */
   .projects-list {
     background-color: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    border-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
     overflow: hidden;
-    margin-bottom: 2rem;
-    border: 1px solid #e9ecef;
+    margin-bottom: 1.2rem;
+    border: 1px solid #e2e8f0;
   }
   
   .list-header {
     display: flex;
-    background-color: #f8f9fa;
-    padding: 1rem;
-    font-weight: 600;
-    color: #2b3a67;
-    border-bottom: 1px solid #e9ecef;
+    background-color: #f8fafc;
+    padding: 0.5rem 0.6rem;
+    font-weight: 500;
+    color: #64748b;
+    border-bottom: 1px solid #e2e8f0;
+    text-transform: uppercase;
+    font-size: 0.65rem;
+    letter-spacing: 0.5px;
   }
   
   .list-row {
     display: flex;
-    padding: 1rem;
-    align-items: center;
-    border-bottom: 1px solid #e9ecef;
-    transition: background-color 0.2s ease;
-  }
-  
-  .list-row:last-child {
-    border-bottom: none;
+    padding: 0.5rem 0.6rem;
+    border-bottom: 1px solid #f1f5f9;
+    transition: all 0.15s ease;
   }
   
   .list-row:hover {
-    background-color: rgba(58, 134, 255, 0.05);
+    background-color: #f9fafb;
   }
   
-  .list-row.is-owner {
-    border-left: 3px solid #3a86ff;
+  .owner-row {
+    border-left: 2px solid #5c9fff;
   }
   
   .list-cell {
+    padding: 0 0.3rem;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+  }
+  
+  .list-cell.project-info {
+    flex: 3;
+    min-width: 200px;
+    overflow: hidden;
+  }
+  
+  .list-cell.modeling-type {
+    flex: 2;
+    min-width: 120px;
+  }
+  
+  .list-cell.owner {
+    flex: 2;
+    min-width: 120px;
+  }
+  
+  .list-cell.updated {
     flex: 1;
-    padding: 0 0.5rem;
+    min-width: 100px;
+  }
+  
+  .list-cell.actions {
+    flex: 1;
+    min-width: 80px;
+    justify-content: flex-end;
+  }
+  
+  .project-info-content {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    overflow: hidden;
+  }
+  
+  .project-details {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .project-link {
+    font-weight: 500;
+    color: #1e3a8a;
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: color 0.15s ease;
+    font-size: 0.8rem;
+  }
+  
+  .project-link:hover {
+    color: #5c9fff;
+  }
+  
+  .version-indicator {
+    font-size: 0.65rem;
+    color: #64748b;
+  }
+  
+  .model-type-pill {
+    display: inline-flex;
+    padding: 0.15rem 0.35rem;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    background-color: #5c9fff;
+    color: white;
+    white-space: nowrap;
+  }
+  
+  .owner-info {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  
+  .owner-avatar {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background-color: #5c9fff;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 500;
+    font-size: 0.7rem;
+  }
+  
+  .owner-name {
+    font-size: 0.75rem;
+    color: #64748b;
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   
-  .list-cell.name {
-    flex: 2;
-    font-weight: 500;
+  .date-info {
+    font-size: 0.7rem;
+    color: #64748b;
   }
   
-  .list-cell.name a {
-    color: #2b3a67;
-    text-decoration: none;
-    transition: color 0.2s ease;
-  }
-  
-  .list-cell.name a:hover {
-    color: #3a86ff;
-  }
-  
-  .list-cell.type,
-  .list-cell.version {
-    flex: 0.8;
-  }
-  
-  .list-cell.actions {
-    flex: 1.2;
+  .action-buttons {
     display: flex;
-    justify-content: flex-end;
-  }
-  
-  .list-actions {
-    display: flex;
-    gap: 0.5rem;
-  }
-  
-  /* Loading, Error, Empty States */
-  .loading-container,
-  .error-message,
-  .empty-state {
-    display: flex;
-    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    padding: 5rem 2rem;
-    background-color: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-    text-align: center;
+    gap: 0.25rem;
+    position: relative;
   }
   
-  .loader {
-    width: 50px;
-    height: 50px;
-    border: 3px solid #f3f3f3;
-    border-top: 3px solid #3a86ff;
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin-bottom: 1.5rem;
+  /* Add these styles to enhance the action buttons in list view */
+
+/* Base action button style update */
+/* Add these styles to enhance the action buttons in list view */
+
+/* Base action button style update */
+.action-button {
+  width: 24px; /* Reduced from 24px */
+  height: 24px; /* Reduced from 24px */
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition: all 0.15s ease;
+  background-color: #f1f5f9; /* Keep original background */
+}
+
+/* Make the icons smaller too */
+.action-button .material-icons {
+  font-size: 0.75rem; /* Reduced from 0.8rem */
+}
+
+/* View button - Blue */
+.action-button[data-tooltip="View Project"] .material-icons {
+  color: rgba(92, 159, 255, 0.9); /* Blue with transparency */
+}
+
+.action-button[data-tooltip="View Project"]:hover {
+  background-color: rgba(92, 159, 255, 0.1); /* Very light blue background on hover */
+}
+
+/* Edit button - Green */
+.action-button[data-tooltip="Edit Project"] .material-icons {
+  color: rgba(76, 175, 80, 0.9); /* Green with transparency */
+}
+
+.action-button[data-tooltip="Edit Project"]:hover {
+  background-color: rgba(76, 175, 80, 0.1); /* Very light green background on hover */
+}
+
+/* Delete button - Red */
+.action-button[data-tooltip="Delete Project"] .material-icons {
+  color: rgba(244, 67, 54, 0.9); /* Red with transparency */
+}
+
+.action-button[data-tooltip="Delete Project"]:hover {
+  background-color: rgba(244, 67, 54, 0.1); /* Very light red background on hover */
+}
+
+/* Simple hover effect for all buttons */
+.action-button:hover {
+  transform: translateY(-1px); /* Subtle lift effect */
+}
+
+/* If you want to match the grid view menu items too */
+.menu-item .material-icons {
+  color: inherit; /* Ensure icons match the text color */
+}
+
+.menu-item:not(.danger):hover .material-icons {
+  color: #5c9fff; /* Blue on hover for normal actions */
+}
+
+.menu-item.danger:hover .material-icons {
+  color: #f44336; /* Red on hover for danger actions */
+}
+  
+  /* Custom tooltip styles */
+  .tooltip {
+    position: relative;
   }
   
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+  .tooltip:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: -30px;  /* Position above the element with fixed distance */
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0.25rem 0.5rem;
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    white-space: nowrap;
+    z-index: 1010;  /* Higher z-index to ensure visibility */
+    pointer-events: none;
+    opacity: 0;
+    animation: fadeIn 0.2s ease-in-out forwards;
   }
   
-  .error-message {
-    color: #e5383b;
+  .tooltip:hover::before {
+    content: '';
+    position: absolute;
+    top: -10px;  /* Triangle position adjusted */
+    left: 50%;
+    transform: translateX(-50%);
+    border-width: 5px;
+    border-style: solid;
+    border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
+    z-index: 1010;  /* Higher z-index to ensure visibility */
+    opacity: 0;
+    animation: fadeIn 0.2s ease-in-out forwards;
   }
   
-  .error-message svg {
-    margin-bottom: 1rem;
-    color: #e5383b;
+  /* Special treatment for pagination tooltips */
+  .pagination .tooltip:hover::after {
+    top: auto;
+    bottom: 35px;
   }
   
-  .empty-illustration {
-    margin-bottom: 2rem;
+  .pagination .tooltip:hover::before {
+    top: auto;
+    bottom: 25px;
+    border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
   }
   
-  .empty-icon {
-    width: 80px;
-    height: 80px;
-    color: #6c757d;
-    opacity: 0.5;
+  /* Special treatment for list view action buttons */
+  @keyframes fadeIn {
+    to {
+      opacity: 1;
+    }
   }
   
-  .empty-state h2 {
-    margin-top: 0;
-    margin-bottom: 1rem;
-    color: #2b3a67;
-  }
-  
-  .empty-state p {
-    margin-bottom: 1.5rem;
-    color: #6c757d;
-    max-width: 400px;
-  }
-  
-  /* Pagination */
+  /* ===== Pagination ===== */
   .pagination {
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 0.5rem;
-    margin-top: 2rem;
+    gap: 0.25rem;
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
   }
   
-  .pagination-pages {
+  .pagination-button {
+    width: 26px;
+    height: 26px;
+    border-radius: 3px;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-  }
-  
-  .pagination-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    background-color: white;
-    border: 1px solid #dee2e6;
-    border-radius: 4px;
-    color: #6c757d;
-    font-size: 0.875rem;
+    justify-content: center;
+    background-color: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    color: #64748b;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
   }
   
-  .pagination-btn:hover:not(:disabled):not(.active) {
-    background-color: #f8f9fa;
-    border-color: #c1c9d0;
+  .pagination-button .material-icons {
+    font-size: 0.9rem;
   }
   
-  .pagination-btn:disabled {
-    opacity: 0.5;
+  .pagination-button:hover:not(:disabled) {
+    background-color: #e2e8f0;
+  }
+  
+  .pagination-button:disabled {
+    opacity: 0.4;
     cursor: not-allowed;
   }
   
-  .pagination-btn.page-number {
-    min-width: 36px;
+  .page-numbers {
+    display: flex;
+    gap: 0.15rem;
+  }
+  
+  .page-number {
+    width: 26px;
+    height: 26px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
     justify-content: center;
-    padding: 0.5rem;
+    background-color: transparent;
+    border: 1px solid #e2e8f0;
+    color: #64748b;
+    font-weight: 400;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-size: 0.75rem;
   }
   
-  .pagination-btn.active {
-    background-color: #3a86ff;
+  .page-number.active {
+    background-color: #5c9fff;
     color: white;
-    border-color: #3a86ff;
-    font-weight: 600;
+    border-color: #5c9fff;
   }
   
-  .pagination-ellipsis {
-    color: #6c757d;
+  .page-number:hover:not(.active) {
+    background-color: #f1f5f9;
   }
   
-  /* Responsive Styles */
-  @media (max-width: 992px) {
-    .toolbar {
-      flex-direction: column;
-      align-items: flex-start;
-    }
-    
-    .toolbar-left {
-      width: 100%;
-      margin-bottom: 1rem;
-    }
-    
-    .search-box {
-      max-width: 100%;
-      width: 100%;
-    }
-    
-    .user-filter {
-      width: 100%;
-      flex-direction: column;
-      align-items: flex-start;
-    }
-    
-    .user-filter select {
-      width: 100%;
-      max-width: 100%;
-    }
-    
-    .toolbar-actions {
-      width: 100%;
-      justify-content: space-between;
-    }
-    
+  .page-ellipsis {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    color: #64748b;
+    font-size: 0.75rem;
+  }
+  
+  .pagination-info {
+    margin-left: 0.5rem;
+    color: #64748b;
+    font-size: 0.7rem;
+  }
+  
+  /* ===== Responsive Styles ===== */
+  @media (max-width: 1200px) {
     .projects-grid {
-      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    }
+    
+    .filters-panel {
+      padding: 0.75rem;
+    }
+  }
+  
+  @media (max-width: 992px) {
+    .header-content {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.75rem;
+    }
+    
+    .header-actions {
+      width: 100%;
+    }
+    
+    .search-controls {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    
+    .search-wrapper, .user-filter {
+      width: 100%;
+      max-width: none;
+    }
+    
+    .filter-options, .sort-options {
+      gap: 0.4rem;
+    }
+    
+    .project-card {
+      margin-bottom: 0.5rem;
     }
   }
   
   @media (max-width: 768px) {
+    .projects-grid {
+      grid-template-columns: 1fr;
+    }
+    
     .list-header {
       display: none;
     }
     
     .list-row {
       flex-direction: column;
-      align-items: flex-start;
       gap: 0.75rem;
       padding: 1rem;
     }
@@ -1409,27 +1987,58 @@
       padding: 0;
     }
     
+    .list-cell.project-info {
+      margin-bottom: 0.4rem;
+    }
+    
     .list-cell.actions {
       justify-content: flex-start;
+      margin-top: 0.4rem;
     }
     
-    .sort-options {
-      display: none;
+    .owner-row {
+      border-left: none;
+      border-top: 3px solid #5c9fff;
     }
     
-    .header-content {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 1rem;
+    .model-type-pill {
+      align-self: flex-start;
     }
     
-    .header-actions {
+    .pagination {
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+    
+    .pagination-info {
       width: 100%;
+      text-align: center;
+      margin: 0.4rem 0 0;
     }
     
-    .header-actions .btn-primary {
+    .page-numbers {
+      order: -1;
       width: 100%;
       justify-content: center;
+      margin-bottom: 0.4rem;
     }
   }
-</style>
+  
+  @media (max-width: 576px) {
+    .menu-dropdown {
+      bottom: auto;
+      right: 0;
+      top: 28px; /* Position below button on small screens */
+    }
+    
+    .filter-options, .sort-options {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    
+    .action-buttons {
+      flex-wrap: wrap;
+    }
+  }
+  </style>

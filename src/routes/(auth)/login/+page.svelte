@@ -43,46 +43,30 @@
 </script>
 
 <svelte:head>
-  <title>Login - TP Server</title>
-  <meta name="description" content="Log in to TP Server" />
+  <title>Login - TPServer</title>
+  <meta name="description" content="Log in to TPServer" />
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </svelte:head>
 
 <div class="login-page">
-  <div class="login-container">
-    <div class="login-header">
-      <div class="logo">
-        <a href="/">
-          <span class="logo-text">TPServer</span>
-        </a>
-      </div>
-      <h1>Welcome Back</h1>
-      <p>Sign in to access your projects</p>
-    </div>
+  <div class="login-card">
+    <h1>Sign In</h1>
     
     <form on:submit|preventDefault={handleLogin} class="login-form">
       {#if errorMessage}
-        <div class="error-message">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="8" x2="12" y2="12"></line>
-            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-          </svg>
-          {errorMessage}
+        <div class="error-container">
+          <span class="material-icons">error_outline</span>
+          <span>{errorMessage}</span>
         </div>
       {/if}
       
       <div class="form-group">
-        <label for="username">Username</label>
-        <div class="input-with-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-            <circle cx="12" cy="7" r="4"></circle>
-          </svg>
+        <div class="input-container">
+          <span class="material-icons">person_outline</span>
           <input 
-            id="username"
             type="text" 
             bind:value={username} 
-            placeholder="Enter your username" 
+            placeholder="Username" 
             disabled={isLoading}
             required
           />
@@ -90,17 +74,12 @@
       </div>
       
       <div class="form-group">
-        <label for="password">Password</label>
-        <div class="input-with-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-          </svg>
+        <div class="input-container">
+          <span class="material-icons">lock_outline</span>
           <input 
-            id="password"
             type="password" 
             bind:value={password} 
-            placeholder="Enter your password" 
+            placeholder="Password" 
             disabled={isLoading}
             required
           />
@@ -109,7 +88,8 @@
       
       <button type="submit" class="login-button" disabled={isLoading}>
         {#if isLoading}
-          <span class="spinner"></span> Logging in...
+          <div class="button-spinner"></div>
+          <span>Signing in...</span>
         {:else}
           Sign In
         {/if}
@@ -117,7 +97,10 @@
     </form>
     
     <div class="login-footer">
-      <p><a href="/">Return to Home</a></p>
+      <a href="/" class="back-link">
+        <span class="material-icons">arrow_back</span>
+        <span>Back to Home</span>
+      </a>
     </div>
   </div>
 </div>
@@ -128,132 +111,106 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: #f4f7fc;
-    padding: 2rem 1rem;
+    background-color: #f8fafc;
+    padding: 1rem;
   }
   
-  .login-container {
-    max-width: 450px;
+  .login-card {
     width: 100%;
+    max-width: 360px;
     background-color: white;
-    border-radius: 10px;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
-    padding: 2.5rem;
-  }
-  
-  .login-header {
-    margin-bottom: 2rem;
-    text-align: center;
-  }
-  
-  .logo {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 1.5rem;
-  }
-  
-  .logo a {
-    text-decoration: none;
-  }
-  
-  .logo-text {
-    font-size: 1.75rem;
-    font-weight: 700;
-    color: var(--primary-color);
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+    padding: 1.5rem;
+    border-top: 3px solid #5c9fff;
   }
   
   h1 {
-    font-size: 1.75rem;
-    color: var(--secondary-color);
-    margin: 0;
-    margin-bottom: 0.5rem;
-  }
-  
-  .login-header p {
-    color: var(--text-secondary);
-    margin: 0;
+    font-size: 1.25rem;
+    color: #1e3a8a;
+    margin: 0 0 1.5rem 0;
+    text-align: center;
+    font-weight: 500;
   }
   
   .login-form {
-    margin-bottom: 2rem;
+    margin-bottom: 1.25rem;
   }
   
-  .error-message {
+  .error-container {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 1rem;
+    padding: 0.6rem 0.75rem;
     background-color: #fee2e2;
-    color: #ef4444;
-    border-radius: 6px;
-    margin-bottom: 1.5rem;
-    font-size: 0.875rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+    color: #dc2626;
+    font-size: 0.75rem;
   }
   
-  .error-message svg {
-    width: 18px;
-    height: 18px;
-    flex-shrink: 0;
+  .error-container .material-icons {
+    font-size: 1rem;
   }
   
   .form-group {
-    margin-bottom: 1.5rem;
+    margin-bottom: 0.75rem;
   }
   
-  label {
-    display: block;
-    margin-bottom: 0.5rem;
-    font-weight: 600;
-    color: var(--text-color);
-  }
-  
-  .input-with-icon {
+  .input-container {
     position: relative;
+    display: flex;
+    align-items: center;
   }
   
-  .input-with-icon svg {
+  .input-container .material-icons {
     position: absolute;
-    left: 1rem;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 20px;
-    height: 20px;
-    color: var(--text-secondary);
+    left: 0.75rem;
+    color: #94a3b8;
+    font-size: 1rem;
   }
   
-  .input-with-icon input {
+  input {
     width: 100%;
-    padding: 0.875rem 1rem 0.875rem 3rem;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    font-size: 1rem;
+    padding: 0.6rem 0.75rem 0.6rem 2.5rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    background-color: #f8fafc;
     transition: all 0.2s;
   }
   
-  .input-with-icon input:focus {
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  input:focus {
     outline: none;
+    border-color: #5c9fff;
+    background-color: white;
+    box-shadow: 0 0 0 2px rgba(92, 159, 255, 0.1);
+  }
+  
+  input::placeholder {
+    color: #94a3b8;
   }
   
   .login-button {
     width: 100%;
-    padding: 0.875rem;
-    background-color: var(--primary-color);
+    padding: 0.6rem;
+    background-color: #5c9fff;
     color: white;
     border: none;
-    border-radius: 6px;
-    font-size: 1rem;
-    font-weight: 600;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s;
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 0.5rem;
+    transition: background-color 0.2s;
+    margin-top: 0.5rem;
   }
   
   .login-button:hover:not(:disabled) {
-    background-color: var(--primary-dark);
+    background-color: #4a89e8;
   }
   
   .login-button:disabled {
@@ -261,14 +218,13 @@
     cursor: not-allowed;
   }
   
-  .spinner {
-    width: 20px;
-    height: 20px;
+  .button-spinner {
     border: 2px solid rgba(255, 255, 255, 0.3);
+    border-left-color: white;
     border-radius: 50%;
-    border-top-color: white;
-    animation: spin 0.8s linear infinite;
-    margin-right: 0.5rem;
+    width: 14px;
+    height: 14px;
+    animation: spin 1s linear infinite;
   }
   
   @keyframes spin {
@@ -277,22 +233,30 @@
   
   .login-footer {
     text-align: center;
-    color: var(--text-secondary);
-    font-size: 0.875rem;
+    margin-top: 0.75rem;
   }
   
-  .login-footer a {
-    color: var(--primary-color);
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: #64748b;
     text-decoration: none;
+    font-size: 0.75rem;
+    transition: color 0.2s;
   }
   
-  .login-footer a:hover {
-    text-decoration: underline;
+  .back-link:hover {
+    color: #5c9fff;
+  }
+  
+  .back-link .material-icons {
+    font-size: 0.8rem;
   }
   
   @media (max-width: 480px) {
-    .login-container {
-      padding: 1.5rem;
+    .login-card {
+      max-width: 100%;
     }
   }
 </style>

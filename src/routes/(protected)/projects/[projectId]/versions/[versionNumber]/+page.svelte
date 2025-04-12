@@ -303,32 +303,29 @@
 
 <svelte:head>
   <title>{pageTitle}</title>
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </svelte:head>
 
-<div class="container version-container">
+<div class="container">
   {#if isLoading}
-    <div class="loading">
-      <div class="loading-spinner"></div>
+    <div class="loading-container">
+      <div class="loader"></div>
       <p>Loading version details...</p>
     </div>
   {:else if error}
-    <div class="error-message">
-      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10"></circle>
-        <line x1="12" y1="8" x2="12" y2="12"></line>
-        <line x1="12" y1="16" x2="12.01" y2="16"></line>
-      </svg>
+    <div class="error-container">
+      <span class="material-icons error-icon">error_outline</span>
       <p>{error}</p>
       <div class="error-actions">
-        <button class="btn btn-primary" on:click={loadData}>Try Again</button>
-        <a href={`/projects/${projectId}`} class="btn btn-outline">Back to Project</a>
+        <button class="btn-primary" on:click={loadData}>Try Again</button>
+        <a href={`/projects/${projectId}`} class="btn-secondary">Back to Project</a>
       </div>
     </div>
   {:else if project && version}
     <div class="page-header">
       <div class="breadcrumbs">
-        <a href="/projects">Projects</a> &gt; 
-        <a href={`/projects/${projectId}`}>{project.projectName}</a> &gt; 
+        <a href="/projects">Projects</a> <span class="separator">/</span> 
+        <a href={`/projects/${projectId}`}>{project.projectName}</a> <span class="separator">/</span> 
         Version #{versionNumber}
       </div>
       
@@ -346,9 +343,7 @@
               on:click={() => goToVersion(versionNumber - 1)}
               title={versionNumber <= 1 ? "This is the first version" : `Go to version ${versionNumber - 1}`}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="15 18 9 12 15 6"></polyline>
-              </svg>
+              <span class="material-icons">chevron_left</span>
               Previous
             </button>
             <button 
@@ -358,18 +353,13 @@
               title={versionNumber >= project.currentVersion ? "This is the latest version" : `Go to version ${versionNumber + 1}`}
             >
               Next
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="9 18 15 12 9 6"></polyline>
-              </svg>
+              <span class="material-icons">chevron_right</span>
             </button>
           </div>
           
           {#if isAdminOrOwner && versionNumber !== project.currentVersion}
             <button class="btn btn-primary" on:click={makeCurrentVersion}>
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                <polyline points="22 4 12 14.01 9 11.01"></polyline>
-              </svg>
+              <span class="material-icons">check_circle</span>
               Set as Current
             </button>
           {/if}
@@ -427,11 +417,7 @@
               <div class="button-spinner"></div>
             {:else}
               <div class="btn-icon project">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                  <polyline points="7 10 12 15 17 10"></polyline>
-                  <line x1="12" y1="15" x2="12" y2="3"></line>
-                </svg>
+                <span class="material-icons">folder</span>
               </div>
             {/if}
             <div class="btn-content">
@@ -450,12 +436,7 @@
               <div class="button-spinner"></div>
             {:else}
               <div class="btn-icon model">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                  <polyline points="14 2 14 8 20 8"></polyline>
-                  <line x1="12" y1="18" x2="12" y2="12"></line>
-                  <line x1="9" y1="15" x2="15" y2="15"></line>
-                </svg>
+                <span class="material-icons">data_object</span>
               </div>
             {/if}
             <div class="btn-content">
@@ -474,13 +455,7 @@
               <div class="button-spinner"></div>
             {:else}
               <div class="btn-icon csv">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                  <polyline points="14 2 14 8 20 8"></polyline>
-                  <line x1="16" y1="13" x2="8" y2="13"></line>
-                  <line x1="16" y1="17" x2="8" y2="17"></line>
-                  <polyline points="10 9 9 9 8 9"></polyline>
-                </svg>
+                <span class="material-icons">table_chart</span>
               </div>
             {/if}
             <div class="btn-content">
@@ -547,71 +522,107 @@
           </div>
           
           {#if totalPages > 1}
-            <div class="pagination">
-              <button 
-                class="pagination-btn" 
-                disabled={currentPage === 1} 
-                on:click={() => changePage(1)}
-                title="First page"
-                aria-label="Go to first page"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="11 17 6 12 11 7"></polyline>
-                  <polyline points="18 17 13 12 18 7"></polyline>
-                </svg>
-              </button>
-              
-              <button 
-                class="pagination-btn" 
-                disabled={currentPage === 1} 
-                on:click={() => changePage(currentPage - 1)}
-                title="Previous page"
-                aria-label="Go to previous page"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="15 18 9 12 15 6"></polyline>
-                </svg>
-              </button>
-              
-              <div class="page-info">
-                <span class="current-page">{currentPage}</span>
-                <span class="page-divider">of</span>
-                <span class="total-pages">{totalPages}</span>
-              </div>
-              
-              <button 
-                class="pagination-btn" 
-                disabled={currentPage === totalPages} 
-                on:click={() => changePage(currentPage + 1)}
-                title="Next page"
-                aria-label="Go to next page"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="9 18 15 12 9 6"></polyline>
-                </svg>
-              </button>
-              
-              <button 
-                class="pagination-btn" 
-                disabled={currentPage === totalPages} 
-                on:click={() => changePage(totalPages)}
-                title="Last page"
-                aria-label="Go to last page"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="13 17 18 12 13 7"></polyline>
-                  <polyline points="6 17 11 12 6 7"></polyline>
-                </svg>
-              </button>
-            </div>
+  <div class="pagination">
+    <button 
+      class="pagination-button tooltip"
+      on:click={() => changePage(1)}
+      disabled={currentPage === 1}
+      data-tooltip="First Page"
+    >
+      <span class="material-icons">first_page</span>
+    </button>
+    
+    <button 
+      class="pagination-button tooltip"
+      on:click={() => changePage(currentPage - 1)}
+      disabled={currentPage === 1}
+      data-tooltip="Previous Page"
+    >
+      <span class="material-icons">chevron_left</span>
+    </button>
+    
+    <div class="page-numbers">
+      {#if totalPages <= 7}
+        {#each Array(totalPages) as _, i}
+          <button 
+            class="page-number" 
+            class:active={currentPage === i + 1}
+            on:click={() => changePage(i + 1)}
+          >
+            {i + 1}
+          </button>
+        {/each}
+      {:else}
+        <!-- First page always shown -->
+        <button 
+          class="page-number" 
+          class:active={currentPage === 1}
+          on:click={() => changePage(1)}
+        >
+          1
+        </button>
+        
+        <!-- Show ellipsis if we're not at the beginning -->
+        {#if currentPage > 3}
+          <span class="page-ellipsis">...</span>
+        {/if}
+        
+        <!-- Pages around current page -->
+        {#each Array(Math.min(5, totalPages)).fill(0) as _, i}
+          {#if currentPage - 2 + i > 1 && currentPage - 2 + i < totalPages}
+            <button 
+              class="page-number" 
+              class:active={currentPage === currentPage - 2 + i}
+              on:click={() => changePage(currentPage - 2 + i)}
+            >
+              {currentPage - 2 + i}
+            </button>
           {/if}
+        {/each}
+        
+        <!-- Show ellipsis if we're not at the end -->
+        {#if currentPage < totalPages - 2}
+          <span class="page-ellipsis">...</span>
+        {/if}
+        
+        <!-- Last page always shown -->
+        <button 
+          class="page-number" 
+          class:active={currentPage === totalPages}
+          on:click={() => changePage(totalPages)}
+        >
+          {totalPages}
+        </button>
+      {/if}
+    </div>
+    
+    <button 
+      class="pagination-button tooltip"
+      on:click={() => changePage(currentPage + 1)}
+      disabled={currentPage === totalPages}
+      data-tooltip="Next Page"
+    >
+      <span class="material-icons">chevron_right</span>
+    </button>
+    
+    <button 
+      class="pagination-button tooltip"
+      on:click={() => changePage(totalPages)}
+      disabled={currentPage === totalPages}
+      data-tooltip="Last Page"
+    >
+      <span class="material-icons">last_page</span>
+    </button>
+    
+    <div class="pagination-info">
+      <span>Page {currentPage} of {totalPages}</span>
+    </div>
+  </div>
+{/if}
         </div>
       {:else}
         <div class="no-results">
-          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="8" y1="12" x2="16" y2="12"></line>
-          </svg>
+          <span class="material-icons no-results-icon">analytics</span>
           <p>No results data available for this version</p>
         </div>
       {/if}
@@ -620,570 +631,696 @@
 </div>
 
 <style>
-/* Base Styles */
-.version-container {
-  padding: 2rem 0;
-  max-width: 1400px;
-  margin: 0 auto;
-}
-
-/* Loading and Error States */
-.loading, .error-message {
-  padding: 4rem 2rem;
-  text-align: center;
-  background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  margin-bottom: 2rem;
-}
-
-.loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1.5rem;
-}
-
-.loading-spinner, .button-spinner {
-  border: 3px solid rgba(58, 134, 255, 0.2);
-  border-left-color: var(--primary-color);
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-.loading-spinner {
-  width: 48px;
-  height: 48px;
-}
-
-.button-spinner {
-  width: 16px;
-  height: 16px;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.error-message {
-  color: var(--danger-color);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-}
-
-.error-message svg {
-  color: var(--danger-color);
-  width: 48px;
-  height: 48px;
-}
-
-.error-actions {
-  display: flex;
-  gap: 1rem;
-  margin-top: 1rem;
-}
-
-/* Page Header & Breadcrumbs */
-.breadcrumbs {
-  margin-bottom: 1.5rem;
-  color: var(--text-secondary);
-  font-size: 0.95rem;
-}
-
-.breadcrumbs a {
-  color: var(--primary-color);
-  text-decoration: none;
-  transition: color 0.2s;
-}
-
-.breadcrumbs a:hover {
-  color: var(--primary-dark);
-  text-decoration: underline;
-}
-
-.page-header {
-  margin-bottom: 1.5rem;
-}
-
-.header-content {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.header-left {
-  display: flex;
-  flex-direction: column;
-}
-
-h1 {
-  font-size: 2.5rem;
-  color: var(--secondary-color);
-  margin: 0;
-  font-weight: 700;
-}
-
-
-/* Header Actions */
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.version-navigation {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.btn {
-  padding: 0.75rem 1.25rem;
-  border-radius: 6px;
-  font-weight: 500;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  transition: all 0.2s;
-  border: none;
-  font-size: 0.95rem;
-}
-
-.btn svg {
-  flex-shrink: 0;
-}
-
-.btn-primary {
-  background-color: var(--primary-color);
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background-color: var(--primary-dark);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-}
-
-.btn-outline {
-  background-color: transparent;
-  border: 1px solid #dee2e6;
-  color: var(--text-color);
-}
-
-.btn-outline:hover:not(:disabled) {
-  background-color: #f8f9fa;
-  border-color: #c1c9d0;
-}
-
-.btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-nav {
-  white-space: nowrap;
-}
-
-/* Unified Card Layout */
-.unified-card {
-  background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  margin-bottom: 1.5rem;
-  border-top: 4px solid var(--primary-color);
-  overflow: hidden;
-}
-
-.card-section {
-  padding: 1.25rem;
-}
-
-.section-header {
-  margin-bottom: 1rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.section-header h2 {
-  margin: 0;
-  font-size: 1.2rem;
-  color: var(--secondary-color);
-}
-
-.card-divider {
-  height: 1px;
-  background-color: #e9ecef;
-  margin: 0;
-}
-
-.info-row {
-  display: flex;
-  gap: 2rem;
-}
-
-.info-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  flex: 1;
-}
-
-.label {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.value {
-  font-size: 0.95rem;
-  color: var(--text-color);
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.status-indicator {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.35rem 0.75rem;
-  border-radius: 4px;
-  font-size: 0.875rem;
-  font-weight: 600;
-  background-color: #f0f0f0;
-  color: #6c757d;
-}
-
-.status-indicator.current {
-  background-color: #e6f7ee;
-  color: #38b000;
-}
-
-/* Download Section */
-.download-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  justify-content: space-between;
-}
-
-.download-btn {
-  display: flex;
-  align-items: center;
-  padding: 1rem;
-  background-color: #ffffff;
-  border: 1px solid #eaeaea;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-align: left;
-  gap: 1rem;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  flex: 1;
-  min-width: 200px;
-}
-
-.download-btn:not(.disabled):not(:disabled):hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-  border-color: #d0d0d0;
-}
-
-.download-btn.disabled, .download-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 8px;
-  flex-shrink: 0;
-}
-
-.btn-icon.project {
-  background-color: rgba(56, 176, 0, 0.1);
-  color: #38b000;
-}
-
+  /* Base Styles */
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0.8rem;
+  }
+  
+  /* Loading and Error States */
+  .loading-container, .error-container {
+    padding: 3rem 1.5rem;
+    text-align: center;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-bottom: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  
+  .loader, .button-spinner {
+    border: 3px solid rgba(92, 159, 255, 0.2);
+    border-left-color: #5c9fff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  
+  .loader {
+    width: 32px;
+    height: 32px;
+  }
+  
+  .button-spinner {
+    width: 16px;
+    height: 16px;
+  }
+  
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  
+  .error-icon {
+    font-size: 2.5rem;
+    color: #dc2626;
+  }
+  
+  .error-container p {
+    color: #dc2626;
+    font-weight: 500;
+    font-size: 0.9rem;
+  }
+  
+  .error-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+  }
+  
+  /* Page Header & Breadcrumbs */
+  .page-header {
+    margin-bottom: 1.5rem;
+  }
+  
+  .breadcrumbs {
+    margin-bottom: 1rem;
+    color: #64748b;
+    font-size: 0.8rem;
+  }
+  
+  .breadcrumbs a {
+    color: #5c9fff;
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+  
+  .breadcrumbs a:hover {
+    color: #4a89e8;
+    text-decoration: underline;
+  }
+  
+  .separator {
+    padding: 0 0.3rem;
+    color: #94a3b8;
+  }
+  
+  .header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .header-left {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  h1 {
+    font-size: 1.5rem;
+    color: #1e3a8a;
+    margin: 0;
+    font-weight: 500;
+  }
+  
+  /* Header Actions */
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  
+  .version-navigation {
+    display: flex;
+    gap: 0.5rem;
+  }
+  
+  .btn {
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.2s;
+    border: none;
+    font-size: 0.85rem;
+  }
+  
+  .btn-primary {
+    background-color: #5c9fff;
+    color: white;
+  }
+  
+  .btn-primary:hover:not(:disabled) {
+    background-color: #4a89e8;
+  }
+  
+  .btn-outline {
+    background-color: #f1f5f9;
+    color: #334155;
+    border: 1px solid #e2e8f0;
+  }
+  
+  .btn-outline:hover:not(:disabled) {
+    background-color: #e2e8f0;
+  }
+  
+  .btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  
+  .btn-nav {
+    white-space: nowrap;
+  }
+  
+  /* Unified Card Layout */
+  .unified-card {
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-bottom: 1.5rem;
+    border-top: 4px solid #5c9fff;
+    overflow: hidden;
+  }
+  
+  .card-section {
+    padding: 1.5rem;
+  }
+  
+  .section-header {
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  
+  .section-header h2 {
+    margin: 0;
+    font-size: 1.2rem;
+    color: #1e3a8a;
+    font-weight: 500;
+  }
+  
+  .card-divider {
+    height: 1px;
+    background-color: #e2e8f0;
+    margin: 0;
+  }
+  
+  .info-row {
+    display: flex;
+    gap: 2rem;
+  }
+  
+  .info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    flex: 1;
+  }
+  
+  .label {
+    font-size: 0.75rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  
+  .value {
+    font-size: 0.95rem;
+    color: #1e293b;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .status-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.35rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    background-color: #f1f5f9;
+    color: #64748b;
+  }
+  
+  .status-indicator.current {
+    background-color: #dcfce7;
+    color: #16a34a;
+  }
+  
+  /* Download Section - Updated to match previous style with new icons */
+  .download-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: flex-start;
+  }
+  
+  .download-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    background-color: #f8f9fa;
+    border: none;
+    border-radius: 5px;
+    color: #334155;
+    font-size: 0.8rem;
+    font-weight: 600;
+    transition: all 0.2s;
+    cursor: pointer;
+    gap: 0.4rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    min-width: auto;
+    flex: 0 1 auto;
+  }
+  
+  .download-btn:not(.disabled):not(:disabled):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+  
+  .download-btn.disabled, .download-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  
+  .btn-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 5px;
+    flex-shrink: 0;
+  }
+  
+  .btn-icon .material-icons {
+    font-size: 1.1rem;
+  }
+  
+  .btn-icon.project {
+    background-color: #fffbeb; /* Light yellow */
+    color: #d97706; /* Amber/yellow */
+  }
+  
 .btn-icon.model {
-  background-color: rgba(58, 134, 255, 0.1);
-  color: #3a86ff;
-}
-
+    background-color: #f0f4ff; /* Unchanged - light blue */
+    color: #5c9fff; /* Unchanged - blue */
+  }
+  
 .btn-icon.csv {
-  background-color: rgba(240, 173, 78, 0.1);
-  color: #f0ad4e;
-}
-
-.btn-content {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-}
-
-.btn-title {
-  font-weight: 600;
-  color: var(--text-color);
-  font-size: 0.95rem;
-}
-
-.btn-subtitle {
-  color: var(--text-secondary);
-  font-size: 0.8rem;
-  margin-top: 0.25rem;
-}
-
-/* Results Section */
-.results-section {
-  background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-  border-left: 4px solid #f0f4fa;
-}
-
-.results-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.5rem;
-  border-bottom: 1px solid #f0f0f0;
-  padding-bottom: 1rem;
-}
-
-.results-header h2 {
-  font-size: 1.4rem;
-  color: var(--secondary-color);
-  margin: 0;
-}
-
-.results-info {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.results-count {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-}
-
-/* Results Table */
-.results-table-container {
-  border: 1px solid #e9ecef;
-  border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-}
-
-.table-wrapper {
-  overflow-x: auto;
-  max-height: 600px;
-  overflow-y: auto;
-}
-
-.results-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.875rem;
-  table-layout: auto;
-  min-width: 100%;
-}
-
-.results-table th {
-  position: sticky;
-  top: 0;
-  background-color: #f8f9fa;
-  z-index: 10;
-  border-bottom: 2px solid #e9ecef;
-  padding: 0;
-  font-weight: 600;
-  color: var(--secondary-color);
-  text-transform: uppercase;
-  font-size: 0.75rem;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-}
-
-.header-button {
-  width: 100%;
-  height: 100%;
-  padding: 0.85rem 0.75rem;
-  text-align: center;
-  background: none;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background-color 0.2s;
-  position: relative;
-  gap: 0.5rem;
-  white-space: nowrap;
-}
-
-.header-button:hover {
-  background-color: rgba(58, 134, 255, 0.05);
-}
-
-.sort-indicator {
-  display: inline-block;
-  color: var(--primary-color);
-  font-weight: bold;
-}
-
-.results-table td {
-  padding: 0.85rem 0.75rem;
-  border-bottom: 1px solid #f0f0f0;
-  color: var(--text-color);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 200px; /* Limit max width of cells */
-  text-align: center; /* Center align content */
-}
-
-.results-table tr:last-child td {
-  border-bottom: none;
-}
-
-.results-table tr:hover td {
-  background-color: rgba(58, 134, 255, 0.04);
-}
-
-.no-results-cell {
-  text-align: center;
-  padding: 2.5rem !important;
-  color: var(--text-secondary);
-  font-style: italic;
-}
-
-.no-results {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1.5rem;
-  padding: 4rem 0;
-  color: var(--text-secondary);
-  text-align: center;
-}
-
-.no-results svg {
-  opacity: 0.3;
-}
-
-/* Pagination */
+    background-color: #dcfce7; /* Light green */
+    color: #16a34a; /* Green */
+  }
+  
+  .btn-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+  }
+  
+  .btn-title {
+    font-weight: 600;
+    color: #1e293b;
+    font-size: 0.8rem;
+  }
+  
+  .btn-subtitle {
+    color: #64748b;
+    font-size: 0.7rem;
+    margin-top: 0.15rem;
+  }
+  
+  /* Results Section */
+  .results-section {
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  .results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid #f0f0f0;
+    padding-bottom: 1rem;
+  }
+  
+  .results-header h2 {
+    font-size: 1.2rem;
+    color: #1e3a8a;
+    margin: 0;
+    font-weight: 500;
+  }
+  
+  .results-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  
+  .results-count {
+    font-size: 0.8rem;
+    color: #64748b;
+  }
+  
+  /* Results Table */
+  .results-table-container {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  
+  .table-wrapper {
+    overflow-x: auto;
+    max-height: 600px;
+    overflow-y: auto;
+  }
+  
+  .results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+  
+  .results-table th {
+    position: sticky;
+    top: 0;
+    background-color: #f8fafc;
+    z-index: 10;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 0;
+    font-weight: 500;
+    color: #64748b;
+    text-align: center;
+  }
+  
+  .header-button {
+    width: 100%;
+    height: 100%;
+    padding: 0.75rem 1rem;
+    text-align: center;
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+  }
+  
+  .header-button:hover {
+    background-color: #f1f5f9;
+  }
+  
+  .sort-indicator {
+    color: #5c9fff;
+    font-weight: bold;
+    margin-left: 0.3rem;
+  }
+  
+  .results-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    color: #1e293b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+    text-align: center;
+  }
+  
+  .results-table tr:last-child td {
+    border-bottom: none;
+  }
+  
+  .results-table tr:hover td {
+    background-color: #f8fafc;
+  }
+  
+  .no-results-cell {
+    text-align: center;
+    padding: 2rem;
+    color: #64748b;
+    font-style: italic;
+  }
+  
+  .no-results {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 4rem 0;
+    color: #64748b;
+    text-align: center;
+  }
+  
+  .no-results-icon {
+    font-size: 3rem;
+    color: #94a3b8;
+    opacity: 0.5;
+  }
+  
+  /* ===== Pagination ===== */
 .pagination {
   display: flex;
   justify-content: center;
   align-items: center;
+  gap: 0.25rem;
   padding: 1rem;
-  gap: 0.75rem;
-  border-top: 1px solid #f0f0f0;
-  background-color: #fbfbfb;
+  border-top: 1px solid #f1f5f9;
+  background-color: #f8fafc;
+  flex-wrap: wrap;
 }
 
-.pagination-btn {
+.pagination-button {
+  width: 26px;
+  height: 26px;
+  border-radius: 3px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  background-color: white;
-  border: 1px solid #e9ecef;
-  border-radius: 6px;
-  color: var(--text-color);
+  background-color: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s ease;
 }
 
-.pagination-btn:hover:not(:disabled) {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
-  transform: translateY(-2px);
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.05);
+.pagination-button .material-icons {
+  font-size: 0.9rem;
 }
 
-.pagination-btn:disabled {
+.pagination-button:hover:not(:disabled) {
+  background-color: #e2e8f0;
+}
+
+.pagination-button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-.page-info {
+.page-numbers {
+  display: flex;
+  gap: 0.15rem;
+}
+
+.page-number {
+  width: 26px;
+  height: 26px;
+  border-radius: 3px;
   display: flex;
   align-items: center;
-  font-size: 0.875rem;
-  background-color: white;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  border: 1px solid #e9ecef;
+  justify-content: center;
+  background-color: transparent;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+  font-weight: 400;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 0.75rem;
 }
 
-.current-page {
-  font-weight: 600;
-  color: var(--primary-color);
+.page-number.active {
+  background-color: #5c9fff;
+  color: white;
+  border-color: #5c9fff;
 }
 
-.page-divider {
-  margin: 0 0.4rem;
-  color: var(--text-secondary);
+.page-number:hover:not(.active) {
+  background-color: #f1f5f9;
 }
 
-.total-pages {
-  color: var(--text-secondary);
+.page-ellipsis {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  color: #64748b;
+  font-size: 0.75rem;
 }
 
-/* Responsive Styles */
-@media (max-width: 992px) {
-  .header-content {
-    flex-direction: column;
-    gap: 1rem;
-    align-items: flex-start;
-  }
-  
-  .header-actions {
-    width: 100%;
-  }
-  
-  .version-navigation {
-    width: 100%;
-  }
-  
-  .btn-nav {
-    flex: 1;
-  }
-  
-  .info-row {
-    flex-direction: column;
-    gap: 1rem;
-  }
-  
-  .download-row {
-    flex-direction: column;
-  }
-  
-  .results-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 1rem;
-  }
+.pagination-info {
+  margin-left: 0.5rem;
+  color: #64748b;
+  font-size: 0.7rem;
 }
 
-@media (max-width: 768px) {
-  .table-wrapper {
-    overflow-x: auto;
-  }
-  
-  .results-table {
-    min-width: 600px;
+/* Tooltip styles */
+.tooltip {
+  position: relative;
+}
+
+.tooltip:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.25rem 0.5rem;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  white-space: nowrap;
+  z-index: 1010;
+  pointer-events: none;
+  opacity: 0;
+  animation: fadeIn 0.2s ease-in-out forwards;
+}
+
+.tooltip:hover::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 5px;
+  border-style: solid;
+  border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
+  z-index: 1010;
+  opacity: 0;
+  animation: fadeIn 0.2s ease-in-out forwards;
+}
+
+/* Special treatment for pagination tooltips */
+.pagination .tooltip:hover::after {
+  top: auto;
+  bottom: 35px;
+}
+
+.pagination .tooltip:hover::before {
+  top: auto;
+  bottom: 25px;
+  border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
+}
+
+@keyframes fadeIn {
+  to {
+    opacity: 1;
   }
 }
+  
+  /* Buttons */
+  .btn-primary, .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  
+  .btn-primary {
+    background-color: #5c9fff;
+    color: white;
+    border: none;
+  }
+  
+  .btn-primary:hover {
+    background-color: #4a89e8;
+  }
+  
+  .btn-secondary {
+    background-color: #f1f5f9;
+    color: #334155;
+    border: 1px solid #e2e8f0;
+  }
+  
+  .btn-secondary:hover {
+    background-color: #e2e8f0;
+  }
+  
+  /* Responsive Styles */
+  @media (max-width: 992px) {
+    .header-content {
+      flex-direction: column;
+      gap: 1rem;
+      align-items: flex-start;
+    }
+    
+    .header-actions {
+      width: 100%;
+    }
+    
+    .version-navigation {
+      width: 100%;
+    }
+    
+    .btn-nav {
+      flex: 1;
+    }
+    
+    .info-row {
+      flex-direction: column;
+      gap: 1rem;
+    }
+    
+    .download-row {
+      flex-direction: column;
+    }
+    
+    .results-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 1rem;
+    }
+  }
+  
+  @media (max-width: 768px) {
+    .table-wrapper {
+      overflow-x: auto;
+    }
+    
+    .results-table {
+      min-width: 600px;
+    }
+    
+    .pagination {
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    
+    .pagination-info {
+      width: auto;
+      text-align: center;
+      margin: 0;
+    }
+  }
+  
+  @media (max-width: 576px) {
+    .header-actions {
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    
+    .btn {
+      width: 100%;
+      justify-content: center;
+    }
+  }
 </style>
