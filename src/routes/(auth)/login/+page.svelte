@@ -1,3 +1,4 @@
+<!-- src/routes/login/+page.svelte -->
 <script lang="ts">
   import { authService } from '$lib/services/auth';
   import { goto } from '$app/navigation';
@@ -7,8 +8,18 @@
   let password = '';
   let errorMessage = '';
   let isLoading = false;
+  let usernameError = false;
+  let passwordError = false;
   
   async function handleLogin() {
+    // Reset error states
+    usernameError = false;
+    passwordError = false;
+    
+    // Check for empty fields manually
+    if (!username) usernameError = true;
+    if (!password) passwordError = true;
+    
     if (!username || !password) {
       errorMessage = 'Please enter both username and password';
       return;
@@ -40,6 +51,15 @@
       isLoading = false;
     }
   }
+  
+  // Clear error state when user types
+  function handleInput(field: 'username' | 'password') {
+    if (field === 'username' && usernameError) usernameError = false;
+    if (field === 'password' && passwordError) passwordError = false;
+    
+    // Clear error message if both fields are filled
+    if (username && password) errorMessage = '';
+  }
 </script>
 
 <svelte:head>
@@ -48,113 +68,169 @@
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </svelte:head>
 
-<div class="login-page">
-  <div class="login-card">
-    <h1>Sign In</h1>
-    
-    <form on:submit|preventDefault={handleLogin} class="login-form">
-      {#if errorMessage}
-        <div class="error-container">
-          <span class="material-icons">error_outline</span>
-          <span>{errorMessage}</span>
+<div class="overlay">
+  <div class="page-container">
+    <div class="login-card">
+      <div class="form-header">
+        <div class="header-icon">
+          <span class="material-icons">login</span>
         </div>
-      {/if}
-      
-      <div class="form-group">
-        <div class="input-container">
-          <span class="material-icons">person_outline</span>
-          <input 
-            type="text" 
-            bind:value={username} 
-            placeholder="Username" 
-            disabled={isLoading}
-            required
-          />
+        <div class="header-text">
+          <h2>Sign In</h2>
+          <p class="header-subtitle">Access your TPServer account</p>
         </div>
       </div>
       
-      <div class="form-group">
-        <div class="input-container">
-          <span class="material-icons">lock_outline</span>
-          <input 
-            type="password" 
-            bind:value={password} 
-            placeholder="Password" 
-            disabled={isLoading}
-            required
-          />
-        </div>
-      </div>
-      
-      <button type="submit" class="login-button" disabled={isLoading}>
-        {#if isLoading}
-          <div class="button-spinner"></div>
-          <span>Signing in...</span>
-        {:else}
-          Sign In
+      <form on:submit|preventDefault={handleLogin} class="login-form" novalidate>
+        {#if errorMessage}
+          <div class="alert alert-error">
+            <span class="material-icons error-icon">error_outline</span>
+            <span>{errorMessage}</span>
+          </div>
         {/if}
-      </button>
-    </form>
-    
-    <div class="login-footer">
-      <a href="/" class="back-link">
-        <span class="material-icons">arrow_back</span>
-        <span>Back to Home</span>
-      </a>
+        
+        <div class="form-group">
+          <label for="username">Username</label>
+          <div class="input-container">
+            <span class="material-icons input-icon">person_outline</span>
+            <input 
+              type="text" 
+              id="username"
+              bind:value={username} 
+              disabled={isLoading}
+              class:error={usernameError}
+              on:input={() => handleInput('username')}
+            />
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label for="password">Password</label>
+          <div class="input-container">
+            <span class="material-icons input-icon">lock_outline</span>
+            <input 
+              type="password" 
+              id="password"
+              bind:value={password} 
+              disabled={isLoading}
+              class:error={passwordError}
+              on:input={() => handleInput('password')}
+            />
+          </div>
+        </div>
+        
+        <div class="form-footer">
+          <a href="/" class="btn-secondary">
+            <span class="material-icons">arrow_back</span>
+            <span>Back</span>
+          </a>
+          <button type="submit" class="btn-primary" disabled={isLoading}>
+            {#if isLoading}
+              <div class="button-spinner"></div>
+              <span>Signing in...</span>
+            {:else}
+              <span class="material-icons">login</span>
+              <span>Sign In</span>
+            {/if}
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
 
 <style>
-  .login-page {
-    min-height: 100vh;
+  /* Overlay with full-screen blur */
+  .overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1000;
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: #f8fafc;
-    padding: 1rem;
+    background-color: rgba(241, 245, 249, 0.5);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    overflow-y: auto;
+    padding: 2rem 1rem;
   }
   
-  .login-card {
+  /* Base Styles */
+  .page-container {
     width: 100%;
-    max-width: 360px;
-    background-color: white;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
-    padding: 1.5rem;
-    border-top: 3px solid #5c9fff;
+    max-width: 400px;
   }
   
-  h1 {
-    font-size: 1.25rem;
-    color: #1e3a8a;
-    margin: 0 0 1.5rem 0;
-    text-align: center;
+  /* Login Card */
+  .login-card {
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+  }
+  
+  /* Form Header */
+  .form-header {
+    padding: 0.75rem 1.5rem;
+    background: linear-gradient(135deg, #4a89e8 0%, #5c9fff 100%);
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  
+  .header-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    font-weight: bold;
+  }
+  
+  .header-icon .material-icons {
+    font-size: 1.1rem;
+    font-weight: bold;
+  }
+  
+  .header-text {
+    flex: 1;
+  }
+  
+  .header-text h2 {
+    font-size: 1.1rem;
+    margin: 0;
     font-weight: 500;
   }
   
+  .header-subtitle {
+    margin: 0.25rem 0 0;
+    font-size: 0.85rem;
+    opacity: 0.9;
+  }
+  
+  /* Form */
   .login-form {
-    margin-bottom: 1.25rem;
-  }
-  
-  .error-container {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.6rem 0.75rem;
-    background-color: #fee2e2;
-    border-radius: 4px;
-    margin-bottom: 1rem;
-    color: #dc2626;
-    font-size: 0.75rem;
-  }
-  
-  .error-container .material-icons {
-    font-size: 1rem;
+    padding: 1.5rem;
   }
   
   .form-group {
-    margin-bottom: 0.75rem;
+    margin-bottom: 1.25rem;
+  }
+  
+  label {
+    display: block;
+    margin-bottom: 0.4rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #334155;
   }
   
   .input-container {
@@ -163,11 +239,11 @@
     align-items: center;
   }
   
-  .input-container .material-icons {
+  .input-icon {
     position: absolute;
     left: 0.75rem;
     color: #94a3b8;
-    font-size: 1rem;
+    font-size: 1.1rem;
   }
   
   input {
@@ -187,37 +263,86 @@
     box-shadow: 0 0 0 2px rgba(92, 159, 255, 0.1);
   }
   
-  input::placeholder {
-    color: #94a3b8;
+  /* Custom error styling (without browser validation) */
+  input.error {
+    border-color: #fca5a5;
   }
   
-  .login-button {
-    width: 100%;
-    padding: 0.6rem;
-    background-color: #5c9fff;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    font-size: 0.85rem;
-    font-weight: 500;
-    cursor: pointer;
+  input.error:focus {
+    border-color: #fca5a5;
+    box-shadow: 0 0 0 2px rgba(252, 165, 165, 0.1);
+  }
+  
+  /* Alert */
+  .alert {
     display: flex;
     align-items: center;
-    justify-content: center;
     gap: 0.5rem;
-    transition: background-color 0.2s;
-    margin-top: 0.5rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: 4px;
+    margin-bottom: 1.25rem;
+    font-size: 0.75rem;
   }
   
-  .login-button:hover:not(:disabled) {
+  .alert-error {
+    background-color: #fee2e2;
+    color: #dc2626;
+  }
+  
+  .error-icon {
+    font-size: 0.9rem;
+  }
+  
+  /* Form Footer */
+  .form-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid #f1f5f9;
+  }
+  
+  /* Buttons - Smaller Size */
+  .btn-primary, .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: none;
+    text-decoration: none;
+  }
+  
+  .btn-primary {
+    background-color: #5c9fff;
+    color: white;
+  }
+  
+  .btn-primary:hover:not(:disabled) {
     background-color: #4a89e8;
   }
   
-  .login-button:disabled {
+  .btn-secondary {
+    background-color: #f1f5f9;
+    color: #334155;
+    border: 1px solid #e2e8f0;
+  }
+  
+  .btn-secondary:hover:not(:disabled) {
+    background-color: #e2e8f0;
+  }
+  
+  .btn-primary:disabled, .btn-secondary:disabled {
     opacity: 0.7;
     cursor: not-allowed;
   }
   
+  /* Button spinner */
   .button-spinner {
     border: 2px solid rgba(255, 255, 255, 0.3);
     border-left-color: white;
@@ -231,32 +356,17 @@
     to { transform: rotate(360deg); }
   }
   
-  .login-footer {
-    text-align: center;
-    margin-top: 0.75rem;
-  }
-  
-  .back-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    color: #64748b;
-    text-decoration: none;
-    font-size: 0.75rem;
-    transition: color 0.2s;
-  }
-  
-  .back-link:hover {
-    color: #5c9fff;
-  }
-  
-  .back-link .material-icons {
-    font-size: 0.8rem;
-  }
-  
+  /* Responsive styles */
   @media (max-width: 480px) {
-    .login-card {
-      max-width: 100%;
+    .form-footer {
+      flex-direction: column-reverse;
+      gap: 0.5rem;
+    }
+    
+    .btn-primary, .btn-secondary {
+      width: 100%;
+      justify-content: center;
+      padding: 0.5rem 1rem;
     }
   }
 </style>

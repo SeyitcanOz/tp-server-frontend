@@ -26,13 +26,6 @@
       dispatch('cancel');
     }
     
-    // Close modal if clicked outside or on Escape key
-    function handleBackdropClick(event: MouseEvent) {
-      if (event.target === event.currentTarget && !isDeleting) {
-        handleCancel();
-      }
-    }
-    
     // Handle keyboard events
     function handleKeydown(event: KeyboardEvent) {
       if (event.key === 'Escape' && isOpen && !isDeleting) {
@@ -44,55 +37,67 @@
   <svelte:window on:keydown={handleKeydown} />
   
   {#if isOpen}
-    <div class="modal-backdrop" on:click={handleBackdropClick}>
-      <div class="modal-container" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-        <div class="modal-header">
-          <div class="header-icon">
-            <span class="material-icons">warning</span>
-          </div>
-          <div class="header-text">
-            <h2 id="modal-title">{title}</h2>
-            {#if itemName}
-              <p class="header-item-name">{itemName}</p>
-            {/if}
-          </div>
-        </div>
+    <!-- Using a button with role="presentation" for backdrop to fix accessibility -->
+    <div 
+      class="modal-backdrop" 
+      role="dialog" 
+      aria-modal="true" 
+      aria-labelledby="modal-title">
+      
+      <!-- Click-blocking overlay with semantic structure -->
+      <div class="modal-overlay" 
+        tabindex="-1" 
+        on:click|self|preventDefault={() => !isDeleting && handleCancel()}>
         
-        <div class="modal-body">
-          {#if error}
-            <div class="error-message">
-              <span class="material-icons">error_outline</span>
-              <span>{error}</span>
+        <div class="modal-container">
+          <div class="modal-header">
+            <div class="header-icon">
+              <span class="material-icons">!</span>
             </div>
-          {/if}
+            <div class="header-text">
+              <h2 id="modal-title">{title}</h2>
+              {#if itemName}
+                <p class="header-item-name">{itemName}</p>
+              {/if}
+            </div>
+          </div>
           
-          <p class="confirm-message">{message}</p>
-        </div>
-        
-        <div class="modal-footer">
-          <button 
-            type="button" 
-            class="btn-cancel" 
-            on:click={handleCancel}
-            disabled={isDeleting}
-          >
-            Cancel
-          </button>
-          
-          <button 
-            type="button" 
-            class="btn-delete" 
-            on:click={handleConfirm}
-            disabled={isDeleting}
-          >
-            {#if isDeleting}
-              <div class="button-spinner"></div>
-              <span>Deleting...</span>
-            {:else}
-              <span class="material-icons">delete</span>
-              <span>Delete</span>
+          <div class="modal-body">
+            {#if error}
+              <div class="error-message">
+                <span class="material-icons">error_outline</span>
+                <span>{error}</span>
+              </div>
             {/if}
-          </button>
+            
+            <p class="confirm-message">{message}</p>
+          </div>
+          
+          <div class="modal-footer">
+            <button 
+              type="button" 
+              class="btn-cancel" 
+              on:click={handleCancel}
+              disabled={isDeleting}
+            >
+              Cancel
+            </button>
+            
+            <button 
+              type="button" 
+              class="btn-delete" 
+              on:click={handleConfirm}
+              disabled={isDeleting}
+            >
+              {#if isDeleting}
+                <div class="button-spinner"></div>
+                <span>Deleting...</span>
+              {:else}
+                <span class="material-icons">delete</span>
+                <span>Delete</span>
+              {/if}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -113,6 +118,15 @@
       background-color: rgba(15, 23, 42, 0.5);
       backdrop-filter: blur(4px);
       -webkit-backdrop-filter: blur(4px);
+    }
+    
+    /* Modal overlay for better a11y */
+    .modal-overlay {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
       padding: 1rem;
     }
     
@@ -138,29 +152,32 @@
       }
     }
     
-    /* Modal Header */
+    /* Modal Header - Smaller with simpler icon */
     .modal-header {
-      padding: 1.25rem 1.5rem;
+      padding: 0.75rem 1.5rem;
       background: linear-gradient(135deg, #ef4444 0%, #f87171 100%);
       color: white;
       display: flex;
       align-items: center;
-      gap: 1rem;
+      gap: 0.75rem;
     }
     
     .header-icon {
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 42px;
-      height: 42px;
+      width: 28px;
+      height: 28px;
       background-color: rgba(255, 255, 255, 0.2);
       border-radius: 50%;
       border: 2px solid rgba(255, 255, 255, 0.3);
+      font-weight: bold;
+      font-size: 1rem;
     }
     
     .header-icon .material-icons {
-      font-size: 1.5rem;
+      font-size: 1.1rem;
+      font-weight: bold;
     }
     
     .header-text {
@@ -168,7 +185,7 @@
     }
     
     .header-text h2 {
-      font-size: 1.25rem;
+      font-size: 1.1rem;
       margin: 0;
       font-weight: 500;
     }
@@ -220,9 +237,9 @@
       display: inline-flex;
       align-items: center;
       gap: 0.4rem;
-      padding: 0.5rem 1rem;
+      padding: 0.3rem 0.6rem;
       border-radius: 4px;
-      font-size: 0.85rem;
+      font-size: 0.75rem;
       font-weight: 500;
       cursor: pointer;
       transition: all 0.15s ease;

@@ -1,4 +1,3 @@
-<!-- src/routes/(protected)/projects/[id]/+page.svelte -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
@@ -7,6 +6,7 @@
   import api from '$lib/services/api';
   import type { ProjectDetail } from '$lib/types/project';
   import type { VersionSummary } from '$lib/types/version';
+  import DeleteConfirmationModal from '$lib/components/DeleteConfirmationModal.svelte';
   
   // Project data
   let project: ProjectDetail | null = null;
@@ -21,6 +21,11 @@
   let sortDirection: 'asc' | 'desc' = 'desc';
   let searchQuery: string = '';
   let filteredVersions: VersionSummary[] = [];
+  
+  // Delete confirmation modal state
+  let showDeleteModal = false;
+  let isDeleting = false;
+  let deleteError: string | null = null;
   
   // Extract project ID from URL
   $: projectId = $page.params.id;
@@ -140,17 +145,38 @@
     window.location.href = `/projects/${projectId}/edit`;
   }
   
-  async function deleteProject() {
-    if (!confirm('Are you sure you want to delete this project? This action cannot be undone.')) {
-      return;
-    }
+  // Show delete confirmation modal
+  function openDeleteModal() {
+    showDeleteModal = true;
+    deleteError = null;
+  }
+  
+  // Handle delete cancellation
+  function cancelDelete() {
+    showDeleteModal = false;
+  }
+  
+  // Handle delete confirmation
+  async function confirmDelete() {
+    if (!project) return;
+    
+    isDeleting = true;
+    deleteError = null;
     
     try {
       await api.delete(`/api/projects/${projectId}`);
+      // Redirect to projects list
       window.location.href = '/projects';
     } catch (err) {
       console.error('Error deleting project:', err);
-      alert('Failed to delete project. Please try again.');
+      // Set error message to display in modal
+      if (err && typeof err === 'object' && 'response' in err) {
+        const axiosError = err as { response?: { data?: { message?: string } } };
+        deleteError = axiosError.response?.data?.message || 'Failed to delete project. Please try again.';
+      } else {
+        deleteError = 'Failed to delete project. Please try again.';
+      }
+      isDeleting = false;
     }
   }
   
@@ -240,7 +266,7 @@
               <span>Edit</span>
             </button>
             {#if $user?.roles.includes('Admin')}
-              <button class="action-icon-btn delete" on:click={deleteProject}>
+              <button class="action-icon-btn delete" on:click={openDeleteModal}>
                 <span class="material-icons">delete</span>
                 <span>Delete</span>
               </button>
@@ -349,6 +375,18 @@
         </div>
       {/if}
     </div>
+    
+    <!-- Delete Confirmation Modal -->
+    <DeleteConfirmationModal 
+      isOpen={showDeleteModal}
+      title="Delete Project"
+      message="Are you sure you want to delete this project? All versions and associated data will be permanently removed."
+      itemName={project.projectName}
+      isDeleting={isDeleting}
+      error={deleteError}
+      on:confirm={confirmDelete}
+      on:cancel={cancelDelete}
+    />
   {/if}
 </div>
 
