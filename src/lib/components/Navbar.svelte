@@ -95,6 +95,7 @@
         <a href="/" class="nav-link">Home</a>
         {#if isLoggedIn}
           <a href="/projects" class="nav-link">Projects</a>
+          <a href="/api-docs" class="nav-link">API Docs</a>
         {/if}
       </div>
       
@@ -148,14 +149,16 @@
 </header>
 
 <style>
-  /* Navbar Base */
+  /* Navbar Base - Fixed position instead of sticky */
   .navbar {
     background-color: white;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    position: sticky;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    position: fixed; /* Changed from sticky to fixed */
     top: 0;
+    left: 0;
+    right: 0;
     z-index: 1000;
-    height: 60px;
+    height: 64px; /* Slightly increased height */
     display: flex;
     align-items: center;
   }
@@ -170,7 +173,7 @@
     padding: 0 1rem;
   }
   
-  /* Brand Section */
+  /* Brand Section - Modernized */
   .navbar-brand {
     display: flex;
     align-items: center;
@@ -184,44 +187,66 @@
     text-decoration: none;
     color: #1e3a8a;
     font-weight: 600;
+    transition: color 0.2s;
+  }
+  
+  .brand-link:hover {
+    color: #5c9fff;
   }
   
   .brand-text {
-    font-size: 1.2rem;
-    font-weight: 500;
+    font-size: 1.25rem;
+    font-weight: 600;
   }
   
-  /* Navbar Menu */
+  /* Navbar Menu - Redesigned */
   .navbar-menu {
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex: 1;
-    margin-left: 1.5rem;
+    margin-left: 2rem;
   }
   
   .nav-links {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 1rem; /* Increased spacing between links */
   }
   
   .nav-link {
     padding: 0.5rem 0.75rem;
     color: #334155;
     text-decoration: none;
-    font-size: 0.85rem;
+    font-size: 0.9rem; /* Slightly larger font */
     font-weight: 500;
     border-radius: 4px;
     transition: all 0.2s;
+    position: relative; /* For underline effect */
+  }
+  
+  /* Added underline effect on hover */
+  .nav-link:after {
+    content: '';
+    position: absolute;
+    width: 0;
+    height: 2px;
+    bottom: 0;
+    left: 50%;
+    background-color: #5c9fff;
+    transition: all 0.2s ease-out;
   }
   
   .nav-link:hover {
-    background-color: #f1f5f9;
     color: #5c9fff;
   }
   
-  /* Auth Section */
+  .nav-link:hover:after {
+    width: 80%;
+    left: 10%;
+  }
+  
+  /* Auth Section - Modernized */
   .nav-auth {
     display: flex;
     align-items: center;
@@ -230,19 +255,22 @@
   .btn-primary {
     background-color: #5c9fff;
     color: white;
-    padding: 0.35rem 0.75rem;
+    padding: 0.5rem 1rem;
     border-radius: 4px;
     text-decoration: none;
     font-size: 0.85rem;
-    font-weight: 500;
-    transition: background-color 0.2s;
+    font-weight: 600;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(92, 159, 255, 0.25);
   }
   
   .btn-primary:hover {
     background-color: #4a89e8;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(92, 159, 255, 0.3);
   }
   
-  /* User Dropdown */
+  /* User Dropdown - Redesigned */
   .user-dropdown {
     position: relative;
   }
@@ -254,9 +282,9 @@
     background: none;
     border: none;
     cursor: pointer;
-    padding: 0.3rem 0.5rem;
-    border-radius: 4px;
-    transition: background-color 0.2s;
+    padding: 0.4rem 0.6rem;
+    border-radius: 6px; /* Rounded corners */
+    transition: all 0.2s;
   }
   
   .user-button:hover {
@@ -264,20 +292,21 @@
   }
   
   .avatar {
-    width: 28px;
-    height: 28px;
+    width: 32px; /* Slightly larger */
+    height: 32px; /* Slightly larger */
     border-radius: 50%;
     background-color: #5c9fff;
     color: white;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.8rem;
+    font-size: 0.9rem;
     font-weight: 600;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   }
   
   .username {
-    font-size: 0.85rem;
+    font-size: 0.9rem;
     color: #334155;
     font-weight: 500;
   }
@@ -292,22 +321,34 @@
     transform: rotate(180deg);
   }
   
-  /* Dropdown Menu */
+  /* Dropdown Menu - Improved design */
   .dropdown-menu {
     position: absolute;
     top: calc(100% + 0.5rem);
     right: 0;
-    width: 220px;
+    width: 240px; /* Slightly wider */
     background-color: white;
-    border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-radius: 8px; /* More rounded corners */
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1); /* Deeper shadow */
     overflow: hidden;
     z-index: 100;
     border: 1px solid #e2e8f0;
+    animation: fadeIn 0.2s ease-out; /* Subtle animation */
+  }
+  
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(-8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
   
   .dropdown-header {
-    padding: 0.75rem 1rem;
+    padding: 0.85rem 1.25rem; /* More padding */
     background-color: #f8fafc;
     border-bottom: 1px solid #e2e8f0;
   }
@@ -315,27 +356,27 @@
   .user-info {
     display: flex;
     flex-direction: column;
-    gap: 0.3rem;
+    gap: 0.4rem;
   }
   
   .user-name {
-    font-weight: 500;
+    font-weight: 600;
     color: #1e3a8a;
-    font-size: 0.85rem;
+    font-size: 0.95rem;
   }
   
   .user-roles {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.3rem;
+    gap: 0.4rem;
   }
   
   .role-badge {
-    font-size: 0.65rem;
+    font-size: 0.7rem;
     background-color: #f0f4ff;
     color: #5c9fff;
-    padding: 0.15rem 0.4rem;
-    border-radius: 3px;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
     font-weight: 500;
   }
   
@@ -346,9 +387,9 @@
   .dropdown-item {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.6rem 1rem;
-    font-size: 0.85rem;
+    gap: 0.6rem;
+    padding: 0.75rem 1.25rem;
+    font-size: 0.9rem;
     color: #334155;
     text-decoration: none;
     width: 100%;
@@ -356,16 +397,21 @@
     background: none;
     text-align: left;
     cursor: pointer;
-    transition: background-color 0.2s;
+    transition: all 0.2s;
   }
   
   .dropdown-item:hover {
     background-color: #f1f5f9;
+    color: #5c9fff;
   }
   
   .dropdown-item .material-icons {
-    font-size: 1rem;
+    font-size: 1.1rem;
     color: #64748b;
+  }
+  
+  .dropdown-item:hover .material-icons {
+    color: #5c9fff;
   }
   
   .dropdown-item.logout {
@@ -378,13 +424,13 @@
     color: #dc2626;
   }
   
-  /* Mobile Menu Toggle */
+  /* Mobile Menu Toggle - Improved */
   .menu-toggle {
     display: none;
     flex-direction: column;
     justify-content: space-between;
-    width: 24px;
-    height: 18px;
+    width: 26px; /* Slightly larger */
+    height: 20px; /* Slightly larger */
     background: none;
     border: none;
     cursor: pointer;
@@ -397,11 +443,11 @@
     width: 100%;
     background-color: #334155;
     border-radius: 2px;
-    transition: all 0.2s;
+    transition: all 0.3s; /* Smoother animation */
   }
   
   .menu-toggle.active span:nth-child(1) {
-    transform: translateY(8px) rotate(45deg);
+    transform: translateY(9px) rotate(45deg);
   }
   
   .menu-toggle.active span:nth-child(2) {
@@ -409,19 +455,19 @@
   }
   
   .menu-toggle.active span:nth-child(3) {
-    transform: translateY(-8px) rotate(-45deg);
+    transform: translateY(-9px) rotate(-45deg);
   }
   
-  /* Responsive Styles */
+  /* Responsive Styles - Improved */
   @media (max-width: 768px) {
     .navbar {
       height: auto;
-      min-height: 60px;
+      min-height: 64px;
     }
     
     .container {
       flex-wrap: wrap;
-      padding: 0.75rem 1rem;
+      padding: 0.85rem 1rem;
     }
     
     .navbar-brand {
@@ -438,7 +484,7 @@
       flex-direction: column;
       align-items: flex-start;
       margin-left: 0;
-      margin-top: 0.75rem;
+      margin-top: 1rem;
       gap: 1rem;
     }
     
@@ -455,7 +501,16 @@
     
     .nav-link {
       width: 100%;
-      padding: 0.6rem 0.75rem;
+      padding: 0.75rem;
+      border-radius: 6px;
+    }
+    
+    .nav-link:after {
+      display: none; /* Remove underline effect on mobile */
+    }
+    
+    .nav-link:hover {
+      background-color: #f1f5f9;
     }
     
     .nav-auth {
@@ -469,21 +524,28 @@
     .user-button {
       width: 100%;
       justify-content: space-between;
-      padding: 0.6rem 0.75rem;
+      padding: 0.75rem;
+      border-radius: 6px;
     }
     
     .btn-primary {
       width: 100%;
       text-align: center;
-      padding: 0.6rem 0.75rem;
+      padding: 0.75rem;
     }
     
     .dropdown-menu {
       position: static;
       width: 100%;
       margin-top: 0.5rem;
-      box-shadow: none;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
       border: 1px solid #e2e8f0;
+      animation: none;
     }
+  }
+  
+  /* Add spacing below navbar for the fixed positioning */
+  :global(body) {
+    padding-top: 64px; /* Same as navbar height */
   }
 </style>

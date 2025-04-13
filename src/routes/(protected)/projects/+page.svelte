@@ -5,6 +5,7 @@
   import userService from '$lib/services/user';
   import type { PagedResponse, ProjectSummary } from '$lib/types/project';
   import { fade, fly } from 'svelte/transition';
+  import DeleteConfirmationModal from '$lib/components/DeleteConfirmationModal.svelte';
   
   // Variables for filtering and state
   let projects: ProjectSummary[] = [];
@@ -43,6 +44,50 @@
     dateFormatted: string,
     statusBadge: { text: string, color: string }
   })[] = [];
+  
+  // Delete confirmation modal state
+  let showDeleteModal = false;
+  let projectToDelete: string | null = null;
+  let isDeleting = false;
+  let deleteError: string | null = null;
+  
+  // Function to handle delete project
+  function handleDeleteProject(projectId: string) {
+    projectToDelete = projectId;
+    showDeleteModal = true;
+    deleteError = null;
+  }
+  
+  // Close delete modal
+  function closeDeleteModal() {
+    showDeleteModal = false;
+    projectToDelete = null;
+  }
+  
+  // Confirm and execute delete
+  async function confirmDelete() {
+    if (!projectToDelete) return;
+    
+    isDeleting = true;
+    try {
+      await api.delete(`/api/projects/${projectToDelete}`);
+      // Close the modal and refresh projects
+      showDeleteModal = false;
+      projectToDelete = null;
+      // Reload projects list
+      await loadProjects();
+    } catch (err) {
+      console.error('Error deleting project:', err);
+      if (err && typeof err === 'object' && 'response' in err) {
+        const axiosError = err as { response?: { data?: { message?: string } } };
+        deleteError = axiosError.response?.data?.message || 'Failed to delete project. Please try again.';
+      } else {
+        deleteError = 'Failed to delete project. Please try again.';
+      }
+    } finally {
+      isDeleting = false;
+    }
+  }
   
   // Client-side search function
   function filterProjects(projects: ProjectSummary[], query: string): ProjectSummary[] {
@@ -433,13 +478,6 @@
     openMenuId = null;
   }
   
-  // Function to handle delete project
-  function handleDeleteProject(projectId: string) {
-    // Just for demonstration - would need actual API call and confirmation
-    console.log('Delete project:', projectId);
-    // In a real app, you'd add a confirmation dialog here
-  }
-  
   // Enhance projects with visual metadata
   function enhanceProjectsWithVisualData() {
     projectsWithStats = projects.map(project => {
@@ -499,10 +537,8 @@
     }
   }
   
-  // Check if project is owned by current user
-  function isOwnedByCurrentUser(createdBy: string): boolean {
-    return createdBy === $user?.id;
-  }
+  // Check if user is admin
+  $: isAdmin = $user?.roles?.includes('Admin') || false;
   
   // Generate a color based on model type for consistency
   function getModelTypeColor(modelType: string): string {
@@ -525,9 +561,6 @@
     // Default icon
     return 'category';
   }
-  
-  // Check if current user is admin (for template usage)
-  $: isAdmin = $user?.roles?.includes('Admin') || false;
   
   // No need for mouse tracking now
   onMount(() => {
@@ -796,6 +829,8 @@
                         <span class="material-icons">edit</span>
                         <span>Edit</span>
                       </a>
+                    {/if}
+                    {#if isAdmin}
                       <button class="menu-item danger" on:click={() => handleDeleteProject(project.id)}>
                         <span class="material-icons">delete</span>
                         <span>Delete</span>
@@ -861,7 +896,8 @@
                   <a href={`/projects/${project.id}/edit`} class="action-button list-tooltip" data-tooltip="Edit Project">
                     <span class="material-icons">edit</span>
                   </a>
-                  <!-- Direct delete button instead of three-dot menu in list view, with same styling as other action buttons -->
+                {/if}
+                {#if isAdmin}
                   <button class="action-button list-tooltip" style="border: none;" data-tooltip="Delete Project" on:click={() => handleDeleteProject(project.id)}>
                     <span class="material-icons">delete</span>
                   </button>
@@ -972,6 +1008,20 @@
         </div>
       </div>
     {/if}
+  {/if}
+  
+  <!-- Delete Confirmation Modal -->
+  {#if showDeleteModal}
+    <DeleteConfirmationModal 
+      isOpen={showDeleteModal}
+      title="Delete Project"
+      message="Are you sure you want to delete this project? All versions and associated data will be permanently removed."
+      itemName={projectToDelete ? projectsWithStats.find(p => p.id === projectToDelete)?.projectName : ''}
+      isDeleting={isDeleting}
+      error={deleteError}
+      on:confirm={confirmDelete}
+      on:cancel={closeDeleteModal}
+    />
   {/if}
 </div>
 
@@ -2041,4 +2091,4 @@
       flex-wrap: wrap;
     }
   }
-  </style>
+</style>

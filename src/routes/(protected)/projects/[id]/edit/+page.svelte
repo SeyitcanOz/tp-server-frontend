@@ -1,4 +1,3 @@
-<!-- src/routes/(protected)/projects/[id]/edit/+page.svelte -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
@@ -105,7 +104,8 @@
   }
   
   function handleCancel() {
-    goto(`/projects/${projectId}`);
+    // Go back to the previous page instead of specific project page
+    window.history.back();
   }
   
   onMount(() => {
