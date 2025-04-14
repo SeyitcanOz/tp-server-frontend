@@ -365,11 +365,11 @@
                         View Details
                       </a>
                       
-                      {#if isAdminOrOwner && version.versionNumber !== project.currentVersion}
+                      <!-- {#if isAdminOrOwner && version.versionNumber !== project.currentVersion}
                         <button class="action-btn" on:click={() => makeVersionCurrent(version.versionNumber)}>
                           Set as Current
                         </button>
-                      {/if}
+                      {/if} -->
                     </div>
                   </td>
                 </tr>
