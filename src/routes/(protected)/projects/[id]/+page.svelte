@@ -3,7 +3,8 @@
   import { page } from '$app/stores';
   import { user } from '$lib/stores/auth';
   import userService from '$lib/services/user';
-  import api from '$lib/services/api';
+  import projectService from '$lib/services/project';
+  import versionService from '$lib/services/version';
   import type { ProjectDetail } from '$lib/types/project';
   import type { VersionSummary } from '$lib/types/version';
   import DeleteConfirmationModal from '$lib/components/DeleteConfirmationModal.svelte';
@@ -71,8 +72,8 @@
     error = null;
     
     try {
-      const response = await api.get<ProjectDetail>(`/api/projects/${projectId}`);
-      project = response.data;
+      // Use the projectService instead of direct API calls
+      project = await projectService.getProjectById(projectId);
       
       // Load project owner details
       await loadOwnerDetails(project.createdBy);
@@ -88,8 +89,9 @@
     isLoadingVersions = true;
     
     try {
-      const response = await api.get<{ items: VersionSummary[] }>(`/api/versions/project/${projectId}`);
-      versions = response.data.items;
+      // Use the versionService instead of direct API calls
+      const response = await versionService.getProjectVersions(projectId);
+      versions = response.items;
     } catch (err) {
       console.error('Error fetching project versions:', err);
       // Don't set error here to avoid replacing the main error message
@@ -164,7 +166,8 @@
     deleteError = null;
     
     try {
-      await api.delete(`/api/projects/${projectId}`);
+      // Use projectService instead of direct API call
+      await projectService.deleteProject(projectId);
       // Redirect to projects list
       window.location.href = '/projects';
     } catch (err) {
@@ -201,7 +204,8 @@
     }
     
     try {
-      await api.post(`/api/versions/${projectId}/${versionNumber}/setcurrent`);
+      // Use versionService instead of direct API call
+      await versionService.setCurrentVersion(projectId, versionNumber);
       // Reload data to refresh
       await loadProject();
       await loadVersions();
@@ -344,7 +348,7 @@
               </tr>
             </thead>
             <tbody>
-              {#each filteredVersions as version}
+              {#each filteredVersions as version (version.id)}
                 <tr>
                   <td class="center-aligned">Version #{version.versionNumber}</td>
                   <td class="center-aligned">{formatDate(version.createdAt)}</td>
@@ -848,4 +852,4 @@
       justify-content: flex-start;
     }
   }
-</style>
+  </style>

@@ -3,7 +3,9 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { user } from '$lib/stores/auth';
-  import api from '$lib/services/api';
+  import projectService from '$lib/services/project';
+  import versionService from '$lib/services/version';
+  import downloadService from '$lib/services/download';
   import type { ProjectDetail } from '$lib/types/project';
   import type { ProjectVersion } from '$lib/types/version';
   
@@ -105,13 +107,11 @@
     error = null;
     
     try {
-      // Load project data
-      const projectResponse = await api.get<ProjectDetail>(`/api/projects/${projectId}`);
-      project = projectResponse.data;
+      // Load project data using the project service
+      project = await projectService.getProjectById(projectId);
       
-      // Load version data
-      const versionResponse = await api.get<ProjectVersion>(`/api/versions/${projectId}/${versionNumber}`);
-      version = versionResponse.data;
+      // Load version data using the version service
+      version = await versionService.getVersion(projectId, versionNumber);
       
       // Get available columns for table
       if (version?.resultsData?.rows && version.resultsData.rows.length > 0) {
@@ -149,7 +149,8 @@
     }
     
     try {
-      await api.post(`/api/versions/${projectId}/${versionNumber}/setcurrent`);
+      // Use version service to set current version
+      await versionService.setCurrentVersion(projectId, versionNumber);
       // Reload data to refresh the UI
       await loadData();
     } catch (err) {
@@ -158,36 +159,13 @@
     }
   }
   
-  // Download handlers with proper authentication
+  // Download handlers using download service
   async function downloadProjectZip() {
     if (isDownloading.project || !hasProjectData) return;
     
     try {
       isDownloading.project = true;
-      
-      // Make an authenticated request for the file
-      const response = await api.get(`/api/download/project/${projectId}/zip?versionNumber=${versionNumber}`, {
-        responseType: 'blob'
-      });
-      
-      // Create a URL for the blob data
-      const blob = new Blob([response.data]);
-      const url = URL.createObjectURL(blob);
-      
-      // Create a safe filename
-      const safeName = project?.projectName?.replace(/[^a-z0-9-]/gi, '_') || 'project';
-      const filename = `${safeName}_v${versionNumber}.zip`;
-      
-      // Create a temporary link and trigger the download
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      // Clean up the URL object
-      URL.revokeObjectURL(url);
+      await downloadService.downloadProjectZip(projectId, versionNumber);
     } catch (err) {
       console.error('Error downloading project:', err);
       alert('Failed to download project. Please try again.');
@@ -201,25 +179,7 @@
     
     try {
       isDownloading.dotmodel = true;
-      
-      const response = await api.get(`/api/download/project/${projectId}/dotmodel?versionNumber=${versionNumber}`, {
-        responseType: 'blob'
-      });
-      
-      const blob = new Blob([response.data]);
-      const url = URL.createObjectURL(blob);
-      
-      const safeName = project?.projectName?.replace(/[^a-z0-9-]/gi, '_') || 'model';
-      const filename = `${safeName}_v${versionNumber}.model`;
-      
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      URL.revokeObjectURL(url);
+      await downloadService.downloadDotModel(projectId, versionNumber);
     } catch (err) {
       console.error('Error downloading model file:', err);
       alert('Failed to download model file. Please try again.');
@@ -233,25 +193,7 @@
     
     try {
       isDownloading.results = true;
-      
-      const response = await api.get(`/api/download/project/${projectId}/results-csv?versionNumber=${versionNumber}`, {
-        responseType: 'blob'
-      });
-      
-      const blob = new Blob([response.data], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      
-      const safeName = project?.projectName?.replace(/[^a-z0-9-]/gi, '_') || 'results';
-      const filename = `${safeName}_results_v${versionNumber}.csv`;
-      
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      URL.revokeObjectURL(url);
+      await downloadService.downloadResultsCsv(projectId, versionNumber);
     } catch (err) {
       console.error('Error downloading results CSV:', err);
       alert('Failed to download results. Please try again.');
@@ -1323,4 +1265,4 @@
       justify-content: center;
     }
   }
-</style>
+  </style>

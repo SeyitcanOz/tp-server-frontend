@@ -1,6 +1,6 @@
 import api from './api';
+import type { PagedResponse } from '$lib/types/project';
 import type { 
-  PagedResponse, 
   VersionSummary, 
   ProjectVersion, 
   CreateVersionRequest 
