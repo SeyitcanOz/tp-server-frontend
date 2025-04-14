@@ -1,7 +1,8 @@
+<!-- src/routes/(protected)/projects/+page.svelte -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import { user } from '$lib/stores/auth';
-  import api from '$lib/services/api';
+  import projectService from '$lib/services/project';
   import userService from '$lib/services/user';
   import type { PagedResponse, ProjectSummary } from '$lib/types/project';
   import { fade, fly } from 'svelte/transition';
@@ -9,18 +10,18 @@
   
   // Variables for filtering and state
   let projects: ProjectSummary[] = [];
-  let allProjects: ProjectSummary[] = []; // Store all projects for client-side filtering
   let isLoading = true;
   let loadingError: string | null = null;
   let currentPage = 1;
-  let pageSize = 60;
+  let pageSize = 20;
   let totalPages = 1;
   let totalCount = 0;
   let searchQuery = '';
   let userMap: Record<string, string> = {}; // Maps user IDs to usernames
   let viewMode: 'grid' | 'list' = 'grid';
   let sortOrder: 'name' | 'updated' | 'version' = 'updated';
-  let filterType: string = '';
+  let modellingTypes: string[] = [];
+  let selectedModellingType = '';
   
   // For tracking which dropdown is open
   let openMenuId: string | null = null;
@@ -29,11 +30,6 @@
   let userFilter: string | null = null; // For admin to filter by user
   let allUsers: {id: string, username: string}[] = []; // List of users for admin to filter by
   let isLoadingUsers = false;
-  
-  // For more advanced filtering
-  let showFilters = false;
-  let modelTypes = new Set<string>();
-  let selectedModelTypes: string[] = [];
   
   // For more visual data
   let projectsWithStats: (ProjectSummary & { 
@@ -50,6 +46,10 @@
   let projectToDelete: string | null = null;
   let isDeleting = false;
   let deleteError: string | null = null;
+  
+  // Pagination info
+  let hasNextPage = false;
+  let hasPreviousPage = false;
   
   // Function to handle delete project
   function handleDeleteProject(projectId: string) {
@@ -70,7 +70,7 @@
     
     isDeleting = true;
     try {
-      await api.delete(`/api/projects/${projectToDelete}`);
+      await projectService.deleteProject(projectToDelete);
       // Close the modal and refresh projects
       showDeleteModal = false;
       projectToDelete = null;
@@ -89,177 +89,51 @@
     }
   }
   
-  // Client-side search function
-  function filterProjects(projects: ProjectSummary[], query: string): ProjectSummary[] {
-    if (!query) return projects;
-    
-    const lowerQuery = query.toLowerCase();
-    return projects.filter(project => 
-      project.projectName.toLowerCase().includes(lowerQuery) || 
-      project.modellingType.toLowerCase().includes(lowerQuery)
-    );
-  }
-
-  // Client-side filter function
-  function applyTypeFilter(projects: ProjectSummary[], types: string[]): ProjectSummary[] {
-    if (!types.length) return projects;
-    return projects.filter(project => types.includes(project.modellingType));
-  }
-
-  // Client-side sort function
-  function sortProjects(projects: ProjectSummary[], order: 'name' | 'updated' | 'version'): ProjectSummary[] {
-    return [...projects].sort((a, b) => {
-      if (order === 'name') {
-        return a.projectName.localeCompare(b.projectName);
-      } else if (order === 'updated') {
-        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-      } else { // version
-        return b.currentVersion - a.currentVersion;
-      }
-    });
-  }
-
-  // Apply client-side filtering and sorting
-  function applyClientSideFilters() {
-    // Start with all projects (or filtered by user if applicable)
-    let filteredProjects = [...allProjects];
-    
-    // Apply search filter
-    if (searchQuery) {
-      filteredProjects = filterProjects(filteredProjects, searchQuery);
-    }
-    
-    // Apply model type filter
-    if (selectedModelTypes.length) {
-      filteredProjects = applyTypeFilter(filteredProjects, selectedModelTypes);
-    }
-    
-    // Apply sorting
-    filteredProjects = sortProjects(filteredProjects, sortOrder);
-    
-    // Update pagination info
-    totalCount = filteredProjects.length;
-    totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-    currentPage = Math.min(currentPage, totalPages);
-    
-    // Apply pagination
-    const startIndex = (currentPage - 1) * pageSize;
-    projects = filteredProjects.slice(startIndex, startIndex + pageSize);
-    
-    // Enhance projects with visual data
-    enhanceProjectsWithVisualData();
-  }
-  
-  // Function to load all users for admin filter dropdown
-  async function loadAllUsers() {
-    if (!$user?.roles?.includes('Admin')) return;
-    
-    isLoadingUsers = true;
-    try {
-      // In a real app, you'd have an endpoint to get all users
-      // Since we don't have one in the provided code, we'll create a workaround
-      
-      // For now, let's just add the current user
-      if ($user) {
-        allUsers = [{
-          id: $user.id,
-          username: $user.username
-        }];
-      }
-      
-      // We'll add any project owners we find while loading projects
-    } catch (err) {
-      console.error('Error loading users:', err);
-    } finally {
-      isLoadingUsers = false;
-    }
-  }
-
   // Function to load projects with search, sort, and filter
   async function loadProjects() {
     isLoading = true;
     loadingError = null;
     
     try {
-      // Prepare query parameters
-      const params: Record<string, any> = {
-        pageNumber: currentPage,
-        pageSize: pageSize
-      };
+      // Convert our sortOrder to the API's sortBy parameter
+      let sortBy: string;
       
-      // Add search parameter if provided
-      if (searchQuery) {
-        params.search = searchQuery;
+      switch (sortOrder) {
+        case 'name':
+          sortBy = 'projectName';
+          break;
+        case 'version':
+          sortBy = 'currentVersion';
+          break;
+        case 'updated':
+        default:
+          sortBy = 'updatedAt';
+          break;
       }
       
-      // Add userId parameter if admin user has selected a filter
-      if ($user?.roles?.includes('Admin') && userFilter) {
-        params.userId = userFilter;
-      }
-      
-      // Map our sort values to what the API expects
-      if (sortOrder === 'name') {
-        params.sortBy = 'projectName';
-        params.sortDirection = 'asc';
-      } else if (sortOrder === 'updated') {
-        params.sortBy = 'updatedAt';
-        params.sortDirection = 'desc';
-      } else if (sortOrder === 'version') {
-        params.sortBy = 'currentVersion';
-        params.sortDirection = 'desc';
-      }
-      
-      // Fetch projects with parameters
-      const response = await api.get<PagedResponse<ProjectSummary>>('/api/projects', {
-        params: params
+      // Get projects with pagination, filtering, and sorting
+      const response = await projectService.getProjects(currentPage, pageSize, {
+        userId: userFilter || undefined,
+        searchTerm: searchQuery || undefined,
+        modellingType: selectedModellingType || undefined,
+        sortBy,
+        sortDescending: true
       });
       
-      // Store all projects for client-side filtering
-      // For a real app, you might need to handle larger datasets differently
-      if (!searchQuery && params.pageSize >= 100) {
-        allProjects = response.data.items;
-      }
-      
-      projects = response.data.items;
-      totalPages = response.data.totalPages;
-      totalCount = response.data.totalCount;
-      
-      // Collect all model types for filtering
-      projects.forEach(project => {
-        if (project.modellingType) {
-          modelTypes.add(project.modellingType);
-        }
-      });
-      modelTypes = new Set(modelTypes); // Trigger reactivity
+      projects = response.items;
+      totalPages = response.totalPages;
+      totalCount = response.totalCount;
+      hasNextPage = response.hasNextPage;
+      hasPreviousPage = response.hasPreviousPage;
       
       // Collect all unique creator IDs
       const creatorIds = [...new Set(projects.map(p => p.createdBy))];
       
-      // For admin users, add any new project creators to the user filter dropdown
-      if ($user?.roles?.includes('Admin')) {
-        await loadUserDetails(creatorIds);
-        
-        // Add any new users to the allUsers array if they're not already there
-        creatorIds.forEach(id => {
-          if (!allUsers.some(u => u.id === id) && userMap[id]) {
-            allUsers.push({
-              id: id,
-              username: userMap[id]
-            });
-          }
-        });
-      } else {
-        // For non-admin users, just load the user details for display
-        await loadUserDetails(creatorIds);
-      }
+      // Load user details for display
+      await loadUserDetails(creatorIds);
       
-      // If we need client-side filtering, load all projects
-      if (searchQuery && allProjects.length === 0) {
-        await loadAllProjectsForFiltering();
-      } else {
-        // Enhance projects with visual data
-        enhanceProjectsWithVisualData();
-      }
+      // Enhance projects with visual data
+      enhanceProjectsWithVisualData();
     } catch (err) {
       console.error('Error fetching projects:', err);
       loadingError = 'Failed to load projects. Please try again.';
@@ -268,41 +142,12 @@
     }
   }
   
-  // Function to load all projects for client-side filtering
-  async function loadAllProjectsForFiltering() {
+  // Load modelling types for filter dropdown
+  async function loadModellingTypes() {
     try {
-      // Only load all projects if we haven't done so already
-      if (allProjects.length === 0) {
-        const params: Record<string, any> = {
-          pageNumber: 1,
-          pageSize: 100 // Get a larger number of projects
-        };
-        
-        // Add userId parameter if admin user has selected a filter
-        if ($user?.roles?.includes('Admin') && userFilter) {
-          params.userId = userFilter;
-        }
-        
-        const response = await api.get<PagedResponse<ProjectSummary>>('/api/projects', {
-          params: params
-        });
-        
-        allProjects = response.data.items;
-        
-        // Collect all model types for filtering
-        allProjects.forEach(project => {
-          if (project.modellingType) {
-            modelTypes.add(project.modellingType);
-          }
-        });
-        modelTypes = new Set(modelTypes); // Trigger reactivity
-        
-        // Immediately apply client-side filtering
-        applyClientSideFilters();
-      }
+      modellingTypes = await projectService.getModellingTypes();
     } catch (err) {
-      console.error('Error loading all projects for filtering:', err);
-      // Fall back to API filtering if this fails
+      console.error('Error loading modelling types:', err);
     }
   }
   
@@ -365,102 +210,64 @@
     }
   }
 
-  // Function to handle search with client-side filtering
+  // Function to handle search
   function handleSearch() {
-    // Try API search first if available, otherwise use client-side filtering
-    if (allProjects.length > 0) {
-      currentPage = 1;  // Reset to first page when searching
-      applyClientSideFilters();
-    } else {
-      currentPage = 1;  // Reset to first page when searching
-      loadProjects();   // Fall back to API search
-    }
+    currentPage = 1;  // Reset to first page when searching
+    loadProjects();
   }
 
-  // Function to clear search with client-side filtering
+  // Function to clear search
   function clearSearch() {
     searchQuery = '';
     currentPage = 1; // Reset to first page
-    
-    // If we have all projects loaded, just apply filters without API call
-    if (allProjects.length > 0) {
-      applyClientSideFilters();
-    } else {
-      loadProjects(); // Fall back to API
-    }
+    loadProjects();
   }
 
   function setUserFilter(userId: string | null) {
     userFilter = userId;
     currentPage = 1; // Reset to first page when changing filter
-    
-    // Reset allProjects when changing user filter to force reload
-    allProjects = [];
-    
     loadProjects();
   }
 
-  // Function to change sort order with client-side filtering
+  // Function to change sort order
   function setSortOrder(order: 'name' | 'updated' | 'version') {
     if (sortOrder !== order) {
       sortOrder = order;
       currentPage = 1; // Reset to first page when changing sort
-      
-      // If we have all projects loaded, just apply filters without API call
-      if (allProjects.length > 0) {
-        applyClientSideFilters();
-      } else {
-        loadProjects(); // Fall back to API
-      }
+      loadProjects();
     }
   }
   
   function setViewMode(mode: 'grid' | 'list') {
     viewMode = mode;
+    // Save view mode preference
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('projectsViewMode', mode);
+    }
   }
   
-  function toggleModelType(type: string) {
-    if (selectedModelTypes.includes(type)) {
-      selectedModelTypes = selectedModelTypes.filter(t => t !== type);
+  function setModellingType(type: string) {
+    if (selectedModellingType === type) {
+      selectedModellingType = '';
     } else {
-      selectedModelTypes = [...selectedModelTypes, type];
+      selectedModellingType = type;
     }
     
     currentPage = 1; // Reset to first page
-    
-    // Apply filters
-    if (allProjects.length > 0) {
-      applyClientSideFilters();
-    } else {
-      loadProjects();
-    }
+    loadProjects();
   }
   
   function clearFilters() {
-    selectedModelTypes = [];
+    selectedModellingType = '';
+    searchQuery = '';
     currentPage = 1;
-    
-    if (allProjects.length > 0) {
-      applyClientSideFilters();
-    } else {
-      loadProjects();
-    }
-  }
-  
-  function toggleFilters() {
-    showFilters = !showFilters;
+    loadProjects();
   }
   
   function changePage(newPage: number) {
     if (newPage >= 1 && newPage <= totalPages) {
       currentPage = newPage;
-      
-      // If we have all projects loaded, just apply filters without API call
-      if (allProjects.length > 0) {
-        applyClientSideFilters();
-      } else {
-        loadProjects();
-      }
+      loadProjects();
     }
   }
   
@@ -562,12 +369,9 @@
     return 'category';
   }
   
-  // No need for mouse tracking now
   onMount(() => {
-    // If admin, load users for filter dropdown
-    if ($user?.roles?.includes('Admin')) {
-      loadAllUsers();
-    }
+    // Load modelling types for filter dropdown
+    loadModellingTypes();
     
     // Initial load of projects
     loadProjects();
@@ -589,13 +393,6 @@
       }
     });
   });
-  
-  // Save view mode preference when it changes
-  $: {
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('projectsViewMode', viewMode);
-    }
-  }
 </script>
 
 <svelte:head>
@@ -648,18 +445,21 @@
       </div>
       
       <div class="controls-right">
-        <!-- Filter button - minmalistic -->
-        <button 
-          class="icon-button filter-button tooltip" 
-          class:active={showFilters} 
-          on:click={toggleFilters}
-          data-tooltip="Filters"
-        >
-          <span class="material-icons">filter_alt</span>
-          {#if selectedModelTypes.length > 0}
-            <span class="count-badge">{selectedModelTypes.length}</span>
-          {/if}
-        </button>
+        <!-- Modelling Type Filter Dropdown -->
+        {#if modellingTypes.length > 0}
+          <div class="model-type-filter">
+            <select 
+              bind:value={selectedModellingType}
+              on:change={() => loadProjects()}
+              class="model-select"
+            >
+              <option value="">All Types</option>
+              {#each modellingTypes as type}
+                <option value={type}>{type}</option>
+              {/each}
+            </select>
+          </div>
+        {/if}
         
         <!-- User filter dropdown for admin users -->
         {#if isAdmin}
@@ -678,7 +478,20 @@
           </div>
         {/if}
         
-        <!-- View mode toggle - minimalistic -->
+        <!-- Sort options -->
+        <div class="sort-options">
+          <select 
+            bind:value={sortOrder}
+            on:change={() => loadProjects()}
+            class="sort-select"
+          >
+            <option value="updated">Last Updated</option>
+            <option value="name">Name</option>
+            <option value="version">Version</option>
+          </select>
+        </div>
+        
+        <!-- View mode toggle -->
         <div class="view-toggle">
           <button 
             class="icon-button tooltip" 
@@ -700,57 +513,33 @@
       </div>
     </div>
     
-    {#if showFilters}
-      <div class="filters-panel">
+    {#if selectedModellingType || searchQuery}
+      <div class="active-filters">
         <div class="filter-content">
-          <div class="filter-section">
-            <div class="filter-options">
-              {#each [...modelTypes] as type}
-                <button 
-                  class="filter-chip" 
-                  class:selected={selectedModelTypes.includes(type)}
-                  on:click={() => toggleModelType(type)}
-                >
-                  {type}
-                </button>
-              {/each}
-            </div>
-          </div>
+          <span class="filter-label">Active filters:</span>
           
-          <div class="filter-section">
-            <div class="sort-options">
-              <button 
-                class="sort-chip"
-                class:selected={sortOrder === 'name'}
-                on:click={() => setSortOrder('name')}
-              >
-                Name
-              </button>
-              <button 
-                class="sort-chip"
-                class:selected={sortOrder === 'updated'}
-                on:click={() => setSortOrder('updated')}
-              >
-                Last Updated
-              </button>
-              <button 
-                class="sort-chip"
-                class:selected={sortOrder === 'version'}
-                on:click={() => setSortOrder('version')}
-              >
-                Version
+          {#if selectedModellingType}
+            <div class="filter-tag">
+              <span>Type: {selectedModellingType}</span>
+              <button class="tag-remove" on:click={() => setModellingType('')}>
+                <span class="material-icons">close</span>
               </button>
             </div>
-          </div>
+          {/if}
+          
+          {#if searchQuery}
+            <div class="filter-tag">
+              <span>Search: {searchQuery}</span>
+              <button class="tag-remove" on:click={clearSearch}>
+                <span class="material-icons">close</span>
+              </button>
+            </div>
+          {/if}
+          
+          <button class="clear-all-btn" on:click={clearFilters}>
+            Clear All
+          </button>
         </div>
-        
-        {#if selectedModelTypes.length > 0}
-          <div class="filter-actions">
-            <button class="clear-button" on:click={clearFilters}>
-              Clear All
-            </button>
-          </div>
-        {/if}
       </div>
     {/if}
   </div>
@@ -772,15 +561,16 @@
         <span class="material-icons empty-icon">article</span>
       </div>
       <h2>No Projects Found</h2>
-      {#if searchQuery || selectedModelTypes.length > 0}
+      {#if searchQuery || selectedModellingType}
         <p>No projects matched your search criteria. Try a different query or clear the filters.</p>
         <div class="empty-actions">
           {#if searchQuery}
             <button class="btn-secondary" on:click={clearSearch}>Clear Search</button>
           {/if}
-          {#if selectedModelTypes.length > 0}
-            <button class="btn-secondary" on:click={clearFilters}>Clear Filters</button>
+          {#if selectedModellingType}
+            <button class="btn-secondary" on:click={() => setModellingType('')}>Clear Type Filter</button>
           {/if}
+          <button class="btn-secondary" on:click={clearFilters}>Clear All Filters</button>
         </div>
       {:else}
         <p>You don't have any projects yet. Create your first project to get started.</p>
@@ -924,7 +714,7 @@
         <button 
           class="pagination-button tooltip"
           on:click={() => changePage(currentPage - 1)}
-          disabled={currentPage === 1}
+          disabled={currentPage === 1 || !hasPreviousPage}
           data-tooltip="Previous Page"
         >
           <span class="material-icons">chevron_left</span>
@@ -988,7 +778,7 @@
         <button 
           class="pagination-button tooltip"
           on:click={() => changePage(currentPage + 1)}
-          disabled={currentPage === totalPages}
+          disabled={currentPage === totalPages || !hasNextPage}
           data-tooltip="Next Page"
         >
           <span class="material-icons">chevron_right</span>
@@ -1118,6 +908,7 @@
     gap: 0.5rem;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
   }
   
   .search-wrapper {
@@ -1193,6 +984,33 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  
+  .model-type-filter, .sort-options, .user-filter {
+    height: 32px;
+  }
+  
+  .model-select, .sort-select, .user-select {
+    height: 100%;
+    padding: 0 0.6rem;
+    border-radius: 4px;
+    border: 1px solid #e2e8f0;
+    background-color: #f8fafc;
+    font-size: 0.8rem;
+    color: #64748b;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    background-size: 0.8rem;
+    padding-right: 1.5rem;
+    min-width: 100px;
+  }
+  
+  .model-select:focus, .sort-select:focus, .user-select:focus {
+    outline: none;
+    border-color: #5c9fff;
   }
   
   .icon-button {
@@ -1224,47 +1042,65 @@
     color: white;
   }
   
-  .count-badge {
-    position: absolute;
-    top: -6px;
-    right: -6px;
-    background-color: #5c9fff;
-    color: white;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
+  /* Active filters section */
+  .active-filters {
+    padding: 0.5rem;
+    border-top: 1px solid #e2e8f0;
+    background-color: #f8fafc;
+  }
+  
+  .filter-content {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  
+  .filter-label {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-right: 0.5rem;
+  }
+  
+  .filter-tag {
+    display: flex;
+    align-items: center;
+    background-color: #e0f2fe;
+    color: #0ea5e9;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    gap: 0.25rem;
+  }
+  
+  .tag-remove {
+    background: none;
+    border: none;
+    color: #0ea5e9;
+    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.7rem;
-    font-weight: 600;
+    padding: 0;
   }
   
-  .user-filter {
-    min-width: 120px;
-    height: 32px;
+  .tag-remove .material-icons {
+    font-size: 0.9rem;
   }
   
-  .user-select {
-    width: 100%;
-    height: 100%;
-    padding: 0 0.6rem;
-    border-radius: 4px;
-    border: 1px solid #e2e8f0;
-    background-color: #f8fafc;
-    appearance: none;
-    font-size: 0.8rem;
+  .clear-all-btn {
+    background: none;
+    border: none;
     color: #64748b;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 0.5rem center;
-    background-size: 0.8rem;
+    font-size: 0.75rem;
     cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    margin-left: auto;
   }
   
-  .user-select:focus {
-    outline: none;
-    border-color: #5c9fff;
+  .clear-all-btn:hover {
+    text-decoration: underline;
+    color: #475569;
   }
   
   .view-toggle {
@@ -1285,73 +1121,6 @@
   .view-toggle .icon-button.active {
     background-color: #5c9fff;
     color: white;
-  }
-  
-  /* ===== Filters Panel ===== */
-  .filters-panel {
-    padding: 0.5rem;
-    border-top: 1px solid #e2e8f0;
-    background-color: #f8fafc;
-    max-height: 200px;
-    overflow-y: auto;
-  }
-  
-  .filter-content {
-    display: flex;
-    gap: 1rem;
-    flex-wrap: wrap;
-  }
-  
-  .filter-section {
-    margin-bottom: 0.5rem;
-  }
-  
-  .filter-options, .sort-options {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.3rem;
-  }
-  
-  .filter-chip, .sort-chip {
-    padding: 0.3rem 0.5rem;
-    background-color: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 3px;
-    font-size: 0.75rem;
-    color: #64748b;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-  
-  .filter-chip:hover, .sort-chip:hover {
-    background-color: #e2e8f0;
-  }
-  
-  .filter-chip.selected, .sort-chip.selected {
-    background-color: #5c9fff;
-    border-color: #5c9fff;
-    color: white;
-  }
-  
-  .filter-actions {
-    margin-top: 0.5rem;
-    display: flex;
-    justify-content: flex-end;
-  }
-  
-  .clear-button {
-    background: none;
-    border: none;
-    color: #64748b;
-    cursor: pointer;
-    font-size: 0.75rem;
-    padding: 0.3rem 0.5rem;
-    transition: all 0.15s ease;
-  }
-  
-  .clear-button:hover {
-    color: #5c9fff;
-    text-decoration: underline;
   }
   
   /* ===== Loading, Error, Empty States ===== */
@@ -1420,6 +1189,8 @@
     display: flex;
     gap: 0.75rem;
     margin-top: 0.75rem;
+    flex-wrap: wrap;
+    justify-content: center;
   }
   
   /* ===== Grid View ===== */
@@ -1579,8 +1350,6 @@
     overflow: visible;
     border: 1px solid #e2e8f0;
   }
-  
-  /* Remove hover showing dropdown - now only shown on click */
   
   .menu-item {
     display: flex;
@@ -1767,73 +1536,55 @@
     position: relative;
   }
   
-  /* Add these styles to enhance the action buttons in list view */
+  /* Base action button style update */
+  .action-button {
+    width: 24px;
+    height: 24px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    transition: all 0.15s ease;
+    background-color: #f1f5f9;
+  }
 
-/* Base action button style update */
-/* Add these styles to enhance the action buttons in list view */
+  /* Make the icons smaller too */
+  .action-button .material-icons {
+    font-size: 0.75rem;
+  }
 
-/* Base action button style update */
-.action-button {
-  width: 24px; /* Reduced from 24px */
-  height: 24px; /* Reduced from 24px */
-  border-radius: 3px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-  transition: all 0.15s ease;
-  background-color: #f1f5f9; /* Keep original background */
-}
+  /* View button - Blue */
+  .action-button[data-tooltip="View Project"] .material-icons {
+    color: rgba(92, 159, 255, 0.9);
+  }
 
-/* Make the icons smaller too */
-.action-button .material-icons {
-  font-size: 0.75rem; /* Reduced from 0.8rem */
-}
+  .action-button[data-tooltip="View Project"]:hover {
+    background-color: rgba(92, 159, 255, 0.1);
+  }
 
-/* View button - Blue */
-.action-button[data-tooltip="View Project"] .material-icons {
-  color: rgba(92, 159, 255, 0.9); /* Blue with transparency */
-}
+  /* Edit button - Green */
+  .action-button[data-tooltip="Edit Project"] .material-icons {
+    color: rgba(76, 175, 80, 0.9);
+  }
 
-.action-button[data-tooltip="View Project"]:hover {
-  background-color: rgba(92, 159, 255, 0.1); /* Very light blue background on hover */
-}
+  .action-button[data-tooltip="Edit Project"]:hover {
+    background-color: rgba(76, 175, 80, 0.1);
+  }
 
-/* Edit button - Green */
-.action-button[data-tooltip="Edit Project"] .material-icons {
-  color: rgba(76, 175, 80, 0.9); /* Green with transparency */
-}
+  /* Delete button - Red */
+  .action-button[data-tooltip="Delete Project"] .material-icons {
+    color: rgba(244, 67, 54, 0.9);
+  }
 
-.action-button[data-tooltip="Edit Project"]:hover {
-  background-color: rgba(76, 175, 80, 0.1); /* Very light green background on hover */
-}
+  .action-button[data-tooltip="Delete Project"]:hover {
+    background-color: rgba(244, 67, 54, 0.1);
+  }
 
-/* Delete button - Red */
-.action-button[data-tooltip="Delete Project"] .material-icons {
-  color: rgba(244, 67, 54, 0.9); /* Red with transparency */
-}
-
-.action-button[data-tooltip="Delete Project"]:hover {
-  background-color: rgba(244, 67, 54, 0.1); /* Very light red background on hover */
-}
-
-/* Simple hover effect for all buttons */
-.action-button:hover {
-  transform: translateY(-1px); /* Subtle lift effect */
-}
-
-/* If you want to match the grid view menu items too */
-.menu-item .material-icons {
-  color: inherit; /* Ensure icons match the text color */
-}
-
-.menu-item:not(.danger):hover .material-icons {
-  color: #5c9fff; /* Blue on hover for normal actions */
-}
-
-.menu-item.danger:hover .material-icons {
-  color: #f44336; /* Red on hover for danger actions */
-}
+  /* Simple hover effect for all buttons */
+  .action-button:hover {
+    transform: translateY(-1px);
+  }
   
   /* Custom tooltip styles */
   .tooltip {
@@ -1843,7 +1594,7 @@
   .tooltip:hover::after {
     content: attr(data-tooltip);
     position: absolute;
-    top: -30px;  /* Position above the element with fixed distance */
+    top: -30px;
     left: 50%;
     transform: translateX(-50%);
     padding: 0.25rem 0.5rem;
@@ -1852,7 +1603,7 @@
     border-radius: 3px;
     font-size: 0.7rem;
     white-space: nowrap;
-    z-index: 1010;  /* Higher z-index to ensure visibility */
+    z-index: 1010;
     pointer-events: none;
     opacity: 0;
     animation: fadeIn 0.2s ease-in-out forwards;
@@ -1861,13 +1612,13 @@
   .tooltip:hover::before {
     content: '';
     position: absolute;
-    top: -10px;  /* Triangle position adjusted */
+    top: -10px;
     left: 50%;
     transform: translateX(-50%);
     border-width: 5px;
     border-style: solid;
     border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
-    z-index: 1010;  /* Higher z-index to ensure visibility */
+    z-index: 1010;
     opacity: 0;
     animation: fadeIn 0.2s ease-in-out forwards;
   }
@@ -1885,6 +1636,11 @@
   }
   
   /* Special treatment for list view action buttons */
+  .list-tooltip:hover::after {
+    font-size: 0.65rem;
+    padding: 0.2rem 0.4rem;
+  }
+  
   @keyframes fadeIn {
     to {
       opacity: 1;
@@ -1981,10 +1737,6 @@
     .projects-grid {
       grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
     }
-    
-    .filters-panel {
-      padding: 0.75rem;
-    }
   }
   
   @media (max-width: 992px) {
@@ -2003,13 +1755,18 @@
       align-items: stretch;
     }
     
-    .search-wrapper, .user-filter {
+    .search-wrapper {
       width: 100%;
       max-width: none;
     }
     
-    .filter-options, .sort-options {
-      gap: 0.4rem;
+    .controls-right {
+      width: 100%;
+      justify-content: space-between;
+    }
+    
+    .model-type-filter, .sort-options, .user-filter {
+      flex: 1;
     }
     
     .project-card {
@@ -2079,16 +1836,40 @@
     .menu-dropdown {
       bottom: auto;
       right: 0;
-      top: 28px; /* Position below button on small screens */
-    }
-    
-    .filter-options, .sort-options {
-      flex-direction: column;
-      align-items: stretch;
+      top: 28px;
     }
     
     .action-buttons {
       flex-wrap: wrap;
+      justify-content: flex-start;
+      gap: 0.5rem;
+    }
+    
+    .controls-right {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    
+    .model-type-filter, .sort-options, .user-filter, .view-toggle {
+      width: 100%;
+    }
+    
+    .view-toggle {
+      justify-content: space-between;
+    }
+    
+    .view-toggle .icon-button {
+      flex: 1;
+    }
+    
+    .active-filters .filter-content {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    
+    .clear-all-btn {
+      margin-left: 0;
+      align-self: flex-end;
     }
   }
 </style>
