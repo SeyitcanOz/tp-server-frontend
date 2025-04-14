@@ -1,4 +1,3 @@
-<!-- src/lib/components/CreateVersionForm.svelte -->
 <script lang="ts">
     import { createEventDispatcher } from 'svelte';
     import { goto } from '$app/navigation';
