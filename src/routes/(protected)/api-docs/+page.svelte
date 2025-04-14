@@ -17,7 +17,7 @@
     pathParams?: Record<string, string>;
     queryParams?: Record<string, string>;
     requestBody?: Record<string, string>;
-    responseBody?: Record<string, string> | string; // Fixed to allow string responses
+    responseBody?: Record<string, string> | string;
     responseType?: string;
     notes?: string;
     statusCodes: StatusCode[];
@@ -30,6 +30,131 @@
   
   // Define API endpoint categories
   const apiCategories: ApiCategory[] = [
+    {
+  name: 'Activities',
+  endpoints: [
+    {
+      method: 'GET',
+      path: '/api/activities',
+      description: 'Get a paginated list of activities with filtering options',
+      authorization: 'Admin role required',
+      queryParams: {
+        pageNumber: 'integer (default: 1) - Page number for pagination',
+        pageSize: 'integer (default: 20, max: 100) - Number of items per page',
+        userId: 'string (optional) - Filter activities by user ID',
+        projectId: 'string (optional) - Filter activities by project ID',
+        entityType: 'string (optional) - Filter by entity type (e.g., Project, Version)',
+        actionType: 'string (optional) - Filter by action type (e.g., Create, Update, Delete)',
+        fromDate: 'date-time (optional) - Filter by date range (start date)',
+        toDate: 'date-time (optional) - Filter by date range (end date)',
+        sortBy: 'string (optional) - Sort field (timestamp, username, entityType, actionType)',
+        sortDescending: 'boolean (default: true) - Sort direction'
+      },
+      responseBody: {
+        items: 'ActivityResponse[]',
+        pageNumber: 'integer',
+        pageSize: 'integer',
+        totalCount: 'integer',
+        totalPages: 'integer',
+        hasNextPage: 'boolean',
+        hasPreviousPage: 'boolean'
+      },
+      notes: 'Admin only. Retrieves activity logs across all users and projects with optional filtering. Results include information about who performed what actions on which entities.',
+      statusCodes: [
+        { code: 200, description: 'Successfully retrieved activities' },
+        { code: 401, description: 'Unauthorized' },
+        { code: 403, description: 'Forbidden (not an admin)' }
+      ]
+    },
+    {
+      method: 'GET',
+      path: '/api/activities/me',
+      description: 'Get activities for the current user',
+      authorization: 'Authentication required',
+      queryParams: {
+        pageNumber: 'integer (default: 1) - Page number for pagination',
+        pageSize: 'integer (default: 20, max: 100) - Number of items per page',
+        sortBy: 'string (optional) - Sort field (timestamp, entityType, actionType)',
+        sortDescending: 'boolean (default: true) - Sort direction'
+      },
+      responseBody: {
+        items: 'ActivityResponse[]',
+        pageNumber: 'integer',
+        pageSize: 'integer',
+        totalCount: 'integer',
+        totalPages: 'integer',
+        hasNextPage: 'boolean',
+        hasPreviousPage: 'boolean'
+      },
+      notes: 'Retrieves the current user\'s activity logs, showing their actions across all projects.',
+      statusCodes: [
+        { code: 200, description: 'Successfully retrieved activities' },
+        { code: 401, description: 'Unauthorized' }
+      ]
+    },
+    {
+      method: 'GET',
+      path: '/api/activities/project/{projectId}',
+      description: 'Get activities for a specific project',
+      authorization: 'Authentication required',
+      pathParams: {
+        projectId: 'string (required) - Project ID'
+      },
+      queryParams: {
+        pageNumber: 'integer (default: 1) - Page number for pagination',
+        pageSize: 'integer (default: 20, max: 100) - Number of items per page',
+        sortBy: 'string (optional) - Sort field (timestamp, username, actionType)',
+        sortDescending: 'boolean (default: true) - Sort direction'
+      },
+      responseBody: {
+        items: 'ActivityResponse[]',
+        pageNumber: 'integer',
+        pageSize: 'integer',
+        totalCount: 'integer',
+        totalPages: 'integer',
+        hasNextPage: 'boolean',
+        hasPreviousPage: 'boolean'
+      },
+      notes: 'Retrieves activity logs for a specific project, showing all actions performed by any user on that project. Users can only view activity logs for projects they have access to.',
+      statusCodes: [
+        { code: 200, description: 'Successfully retrieved activities' },
+        { code: 401, description: 'Unauthorized' },
+        { code: 403, description: 'Forbidden' },
+        { code: 404, description: 'Project not found' }
+      ]
+    },
+    {
+      method: 'GET',
+      path: '/api/activities/user/{userId}',
+      description: 'Get activities for a specific user',
+      authorization: 'Admin role required',
+      pathParams: {
+        userId: 'string (required) - User ID'
+      },
+      queryParams: {
+        pageNumber: 'integer (default: 1) - Page number for pagination',
+        pageSize: 'integer (default: 20, max: 100) - Number of items per page',
+        sortBy: 'string (optional) - Sort field (timestamp, entityType, actionType)',
+        sortDescending: 'boolean (default: true) - Sort direction'
+      },
+      responseBody: {
+        items: 'ActivityResponse[]',
+        pageNumber: 'integer',
+        pageSize: 'integer',
+        totalCount: 'integer',
+        totalPages: 'integer',
+        hasNextPage: 'boolean',
+        hasPreviousPage: 'boolean'
+      },
+      notes: 'Admin only. Retrieves activity logs for a specific user, showing all their actions across all projects.',
+      statusCodes: [
+        { code: 200, description: 'Successfully retrieved activities' },
+        { code: 401, description: 'Unauthorized' },
+        { code: 403, description: 'Forbidden (not an admin)' }
+      ]
+    }
+  ]
+},
     {
       name: 'Authentication',
       endpoints: [
@@ -498,7 +623,7 @@
   ];
   
   // Keep track of which category is expanded
-  let expandedCategory = 'Authentication';
+  let expandedCategory = 'Activities';
   
   // Track minimized endpoint cards (by default, all are maximized)
   let minimizedEndpoints = new Set<string>();

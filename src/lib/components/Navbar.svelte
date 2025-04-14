@@ -95,6 +95,9 @@
         <a href="/" class="nav-link">Home</a>
         {#if isLoggedIn}
           <a href="/projects" class="nav-link">Projects</a>
+          {#if userRoles.includes('Admin')}
+            <a href="/admin" class="nav-link">Admin</a>
+          {/if}
           <a href="/api-docs" class="nav-link">API Docs</a>
         {/if}
       </div>
