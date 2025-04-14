@@ -1,1135 +1,1551 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
-    import { user } from '$lib/stores/auth';
-    import { goto } from '$app/navigation';
-    import adminService from '$lib/services/admin';
-    import activityService from '$lib/services/activity';
-    import type { RegisterRequest } from '$lib/types/auth';
-    import type { ActivityResponse } from '$lib/services/activity';
-    import userService from '$lib/services/user';
-    import { fly, fade } from 'svelte/transition';
-    
-    // Ensure the user is an admin
-    onMount(() => {
-      if (!$user || !$user.roles.includes('Admin')) {
-        goto('/forbidden');
-      }
-    });
+  import { onMount } from 'svelte';
+  import { user } from '$lib/stores/auth';
+  import { goto } from '$app/navigation';
+  import activityService from '$lib/services/activity';
+  import type { ActivityResponse } from '$lib/services/activity';
+  import userService from '$lib/services/user';
+  import { fade, scale } from 'svelte/transition';
   
-    // User Registration State
-    let newUser: RegisterRequest = {
-      username: '',
-      password: '',
-      confirmPassword: ''
-    };
-    let selectedRoles: string[] = ['Engineer']; // Default role
-    let isRegistering = false;
-    let registrationSuccess = false;
-    let registrationError: string | null = null;
-    
-    // Form validation
-    let formErrors: Record<string, string> = {};
-    
-    // Available roles
-    const availableRoles = [
-      { id: 'Admin', name: 'Administrator' },
-      { id: 'Engineer', name: 'Engineer' },
-      { id: 'Viewer', name: 'Viewer' }
-    ];
-    
-    // Activity Log State
-    let activities: ActivityResponse[] = [];
-    let isLoadingActivities = true;
-    let activityError: string | null = null;
-    let currentPage = 1;
-    let pageSize = 20;
-    let totalPages = 1;
-    let totalCount = 0;
-    
-    // Activity filtering
-    let filterUsername = '';
-    let filterEntityType = '';
-    let filterActionType = '';
-    let filterProjectId = '';
-    let filterFromDate: string | null = null;
-    let filterToDate: string | null = null;
-    let filterUserId: string | null = null;
-    
-    // User map for displaying usernames
-    let userMap: Record<string, string> = {};
-    
-    // Loading activities
-    async function loadActivities() {
-      isLoadingActivities = true;
-      activityError = null;
-      
-      try {
-        const response = await activityService.getActivities({
-          pageNumber: currentPage,
-          pageSize,
-          userId: filterUserId || undefined,
-          projectId: filterProjectId || undefined,
-          entityType: filterEntityType || undefined,
-          actionType: filterActionType || undefined,
-          fromDate: filterFromDate ? new Date(filterFromDate) : undefined,
-          toDate: filterToDate ? new Date(filterToDate) : undefined,
-          sortBy: 'timestamp',
-          sortDescending: true
-        });
-        
-        activities = response.items;
-        totalPages = response.totalPages;
-        totalCount = response.totalCount;
-        
-        // Load user details for any unknown users
-        const userIds = activities
-          .map(a => a.userId)
-          .filter(id => !userMap[id] && id !== $user?.id);
-        
-        if (userIds.length > 0) {
-          try {
-            await loadUserDetails(userIds);
-          } catch (err) {
-            console.error('Error loading additional user details:', err);
-            // Continue even if we can't load some user details
-          }
-        }
-      } catch (err) {
-        console.error('Error loading activities:', err);
-        activityError = 'Failed to load activity logs. Please try again.';
-      } finally {
-        isLoadingActivities = false;
-      }
+  // Extend the ActivityResponse type to include the description field
+  interface ExtendedActivityResponse extends ActivityResponse {
+    description?: string;
+  }
+  
+  // Ensure the user is an admin
+  onMount(() => {
+    if (!$user || !$user.roles.includes('Admin')) {
+      goto('/forbidden');
     }
+  });
+  
+  // Activity Log State
+  let activities: ExtendedActivityResponse[] = [];
+  let isLoadingActivities = true;
+  let activityError: string | null = null;
+  let currentPage = 1;
+  let pageSize = 10;
+  let totalPages = 1;
+  let totalCount = 0;
+  let hasNextPage = false;
+  let hasPreviousPage = false;
+  
+  // Activity filtering
+  let filterActionType = '';
+  let filterEntityType = '';
+  let searchQuery = '';
+  
+  
+  // User map for displaying usernames
+  let userMap: Record<string, string> = {};
+  
+  // For tracking which dropdown is open
+  let openDropdown: 'action' | 'entity' | null = null;
+  
+  // Common action types for filter dropdown
+  const commonActionTypes = ['Create', 'Update', 'Delete'];
+  
+  // Common entity types for filter dropdown
+  const commonEntityTypes = ['Project', 'Version', 'User'];
+  
+  // Loading activities
+  async function loadActivities() {
+    isLoadingActivities = true;
+    activityError = null;
     
-    // Load user details
-    async function loadUserDetails(userIds: string[]) {
-      // Filter out duplicate IDs
-      const uniqueIds = [...new Set(userIds)];
+    try {
+      const response = await activityService.getActivities({
+        pageNumber: currentPage,
+        pageSize,
+        entityType: filterEntityType || undefined,
+        actionType: filterActionType || undefined,
+        sortBy: 'timestamp',
+        sortDescending: true
+      });
       
-      for (const userId of uniqueIds) {
-        if (userId === $user?.id) {
-          userMap[userId] = $user.username;
-          continue;
-        }
-        
+      activities = response.items;
+      totalPages = response.totalPages;
+      totalCount = response.totalCount;
+      hasNextPage = response.hasNextPage;
+      hasPreviousPage = response.hasPreviousPage;
+      
+      // Load user details for any unknown users
+      const userIds = activities
+        .map(a => a.userId)
+        .filter(id => !userMap[id] && id !== $user?.id);
+      
+      if (userIds.length > 0) {
         try {
-          const userData = await userService.getUserById(userId);
-          userMap[userId] = userData.username;
-        } catch (error) {
-          console.error(`Error fetching user ${userId}:`, error);
-          userMap[userId] = `User ${userId.substring(0, 6)}...`;
+          await loadUserDetails(userIds);
+        } catch (err) {
+          console.error('Error loading additional user details:', err);
         }
       }
-      
-      // Force reactivity update
-      userMap = { ...userMap };
+    } catch (err) {
+      console.error('Error loading activities:', err);
+      activityError = 'Failed to load activity logs. Please try again.';
+    } finally {
+      isLoadingActivities = false;
     }
+  }
+  
+  // Load user details
+  async function loadUserDetails(userIds: string[]) {
+    const uniqueIds = [...new Set(userIds)];
     
-    // Register a new user
-    async function registerUser() {
-      // Reset state
-      formErrors = {};
-      registrationError = null;
-      registrationSuccess = false;
-      
-      // Validate form
-      let isValid = true;
-      
-      if (!newUser.username.trim()) {
-        formErrors.username = 'Username is required';
-        isValid = false;
+    for (const userId of uniqueIds) {
+      if (userId === $user?.id) {
+        userMap[userId] = $user.username;
+        continue;
       }
-      
-      if (!newUser.password) {
-        formErrors.password = 'Password is required';
-        isValid = false;
-      } else if (newUser.password.length < 6) {
-        formErrors.password = 'Password must be at least 6 characters long';
-        isValid = false;
-      }
-      
-      if (newUser.password !== newUser.confirmPassword) {
-        formErrors.confirmPassword = 'Passwords do not match';
-        isValid = false;
-      }
-      
-      if (!isValid) return;
-      
-      isRegistering = true;
       
       try {
-        await adminService.registerUser(newUser, selectedRoles);
-        registrationSuccess = true;
-        
-        // Reset form
-        newUser = {
-          username: '',
-          password: '',
-          confirmPassword: ''
-        };
-        selectedRoles = ['Engineer']; // Reset to default role
-        
-        // Reload activities after successful registration
-        await loadActivities();
-      } catch (err) {
-        console.error('Error registering user:', err);
-        
-        if (err && typeof err === 'object' && 'response' in err) {
-          const axiosError = err as { response?: { data?: { message?: string } } };
-          registrationError = axiosError.response?.data?.message || 'Failed to register user. Please try again.';
-        } else {
-          registrationError = 'Failed to register user. Please try again.';
-        }
-      } finally {
-        isRegistering = false;
+        const userData = await userService.getUserById(userId);
+        userMap[userId] = userData.username;
+      } catch (error) {
+        console.error(`Error fetching user ${userId}:`, error);
+        userMap[userId] = `User ${userId.substring(0, 6)}...`;
       }
     }
     
-    // Handle role checkbox changes
-    function handleRoleChange(roleId: string, isChecked: boolean) {
-      if (isChecked) {
-        // Add role if it doesn't exist
-        if (!selectedRoles.includes(roleId)) {
-          selectedRoles = [...selectedRoles, roleId];
-        }
-      } else {
-        // Remove role
-        selectedRoles = selectedRoles.filter(r => r !== roleId);
-      }
-    }
-    
-    // Apply activity filters
-    function applyFilters() {
-      currentPage = 1; // Reset to first page
-      loadActivities();
-    }
-    
-    // Reset activity filters
-    function resetFilters() {
-      filterUsername = '';
-      filterEntityType = '';
-      filterActionType = '';
-      filterProjectId = '';
-      filterFromDate = null;
-      filterToDate = null;
-      filterUserId = null;
-      currentPage = 1;
-      loadActivities();
-    }
-    
-    // Format date for display
-    function formatDate(dateString: string): string {
-      const date = new Date(dateString);
+    // Force reactivity update
+    userMap = { ...userMap };
+  }
+  
+  // Apply activity filters
+  function applyFilters() {
+    currentPage = 1; // Reset to first page
+    loadActivities();
+  }
+  
+  // Reset activity filters
+  function resetFilters() {
+    filterEntityType = '';
+    filterActionType = '';
+    searchQuery = '';
+    currentPage = 1;
+    loadActivities();
+    openDropdown = null; // Close dropdown after reset
+  }
+  
+  // Format date for display
+  function formatDate(dateString: string): string {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 1) {
+      return 'Today';
+    } else if (diffDays === 1) {
+      return 'Yesterday';
+    } else if (diffDays < 7) {
+      return `${diffDays} days ago`;
+    } else if (diffDays < 30) {
+      return `${Math.floor(diffDays / 7)} weeks ago`;
+    } else {
       return date.toLocaleDateString(undefined, {
         year: 'numeric',
         month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
+        day: 'numeric'
       });
     }
-    
-    // Get a color class based on action type
-    function getActionTypeClass(actionType: string): string {
-      switch (actionType.toLowerCase()) {
-        case 'create':
-          return 'action-create';
-        case 'update':
-          return 'action-update';
-        case 'delete':
-          return 'action-delete';
-        default:
-          return 'action-other';
-      }
+  }
+  
+  // Get a color class based on action type
+  function getActionTypeClass(actionType: string): string {
+    switch (actionType?.toLowerCase()) {
+      case 'create':
+        return 'action-create';
+      case 'update':
+        return 'action-update';
+      case 'delete':
+        return 'action-delete';
+      default:
+        return 'action-other';
     }
-    
-    // Change page in pagination
-    function changePage(newPage: number) {
-      if (newPage >= 1 && newPage <= totalPages) {
-        currentPage = newPage;
-        loadActivities();
-      }
+  }
+  
+  // Get action icon based on type
+  function getActionIcon(actionType: string): string {
+    switch (actionType?.toLowerCase()) {
+      case 'create':
+        return 'add_circle';
+      case 'update':
+        return 'edit';
+      case 'delete':
+        return 'delete';
+      default:
+        return 'history';
     }
-    
-    // Watch for username filter changes to find matching user IDs
-    $: {
-      if (filterUsername) {
-        // Find user ID by username
-        const matchingUserId = Object.entries(userMap)
-          .find(([id, username]) => 
-            username.toLowerCase().includes(filterUsername.toLowerCase())
-          )?.[0];
-        
-        filterUserId = matchingUserId || null;
-      } else {
-        filterUserId = null;
-      }
-    }
-    
-    // Load initial data
-    onMount(() => {
+  }
+  
+  // Handle search
+  function handleSearch() {
+    // Only apply search if there's a query
+    if (searchQuery.trim()) {
+      currentPage = 1; // Reset to first page
       loadActivities();
-    });
-  </script>
+    }
+  }
   
-  <svelte:head>
-    <title>Admin Panel - TPServer</title>
-    <meta name="description" content="TPServer administrator control panel" />
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-  </svelte:head>
+  // Clear search
+  function clearSearch() {
+    searchQuery = '';
+    currentPage = 1; // Reset to first page
+    loadActivities();
+  }
   
-  <div class="page-container">
-    <header class="page-header">
-      <div class="header-content">
-        <h1>Admin Panel</h1>
-        <p class="subtitle">Manage users and monitor system activity</p>
-      </div>
-    </header>
+  // Set action type filter
+  function setActionType(type: string) {
+    if (filterActionType === type) {
+      filterActionType = '';
+    } else {
+      filterActionType = type;
+    }
     
-    <div class="admin-grid">
-      <!-- User Registration Card -->
-      <div class="card user-registration-card">
-        <div class="card-header">
-          <h2>Create New User</h2>
-        </div>
-        
-        <form on:submit|preventDefault={registerUser} class="registration-form">
-          {#if registrationSuccess}
-            <div class="alert alert-success" in:fly={{ y: -20, duration: 200 }}>
-              <span class="material-icons">check_circle</span>
-              <span>User registered successfully!</span>
-            </div>
-          {/if}
-          
-          {#if registrationError}
-            <div class="alert alert-error" in:fly={{ y: -20, duration: 200 }}>
-              <span class="material-icons">error_outline</span>
-              <span>{registrationError}</span>
-            </div>
-          {/if}
-          
-          <div class="form-group">
-            <label for="username">Username</label>
-            <div class="input-container">
-              <span class="material-icons input-icon">person</span>
-              <input 
-                type="text" 
-                id="username" 
-                bind:value={newUser.username} 
-                placeholder="Enter username"
-                class:error={!!formErrors.username}
-                disabled={isRegistering}
-              />
-            </div>
-            {#if formErrors.username}
-              <div class="error-message">{formErrors.username}</div>
-            {/if}
-          </div>
-          
-          <div class="form-group">
-            <label for="password">Password</label>
-            <div class="input-container">
-              <span class="material-icons input-icon">lock</span>
-              <input 
-                type="password" 
-                id="password" 
-                bind:value={newUser.password}
-                placeholder="Enter password"
-                class:error={!!formErrors.password}
-                disabled={isRegistering}
-              />
-            </div>
-            {#if formErrors.password}
-              <div class="error-message">{formErrors.password}</div>
-            {/if}
-          </div>
-          
-          <div class="form-group">
-            <label for="confirmPassword">Confirm Password</label>
-            <div class="input-container">
-              <span class="material-icons input-icon">lock_outline</span>
-              <input 
-                type="password" 
-                id="confirmPassword" 
-                bind:value={newUser.confirmPassword}
-                placeholder="Confirm password"
-                class:error={!!formErrors.confirmPassword}
-                disabled={isRegistering}
-              />
-            </div>
-            {#if formErrors.confirmPassword}
-              <div class="error-message">{formErrors.confirmPassword}</div>
-            {/if}
-          </div>
-          
-          <div class="form-group">
-            <label>User Roles</label>
-            <div class="roles-container">
-              {#each availableRoles as role}
-                <label class="role-checkbox">
-                  <input 
-                    type="checkbox" 
-                    checked={selectedRoles.includes(role.id)}
-                    on:change={(e) => handleRoleChange(role.id, e.currentTarget.checked)}
-                    disabled={isRegistering}
-                  />
-                  <span class="checkbox-label">{role.name}</span>
-                </label>
-              {/each}
-            </div>
-            {#if selectedRoles.length === 0}
-              <div class="error-message">Select at least one role</div>
-            {/if}
-          </div>
-          
-          <div class="form-actions">
-            <button type="submit" class="btn-primary" disabled={isRegistering || selectedRoles.length === 0}>
-              {#if isRegistering}
-                <div class="button-spinner"></div>
-                <span>Creating user...</span>
-              {:else}
-                <span class="material-icons">person_add</span>
-                <span>Create User</span>
-              {/if}
-            </button>
-          </div>
-        </form>
-      </div>
+    currentPage = 1; // Reset to first page
+    loadActivities();
+    openDropdown = null; // Close dropdown after selection
+  }
+  
+  // Set entity type filter
+  function setEntityType(type: string) {
+    if (filterEntityType === type) {
+      filterEntityType = '';
+    } else {
+      filterEntityType = type;
+    }
+    
+    currentPage = 1; // Reset to first page
+    loadActivities();
+    openDropdown = null; // Close dropdown after selection
+  }
+  
+  // Toggle dropdown
+  function toggleDropdown(dropdown: 'action' | 'entity', event: MouseEvent) {
+    // Stop event propagation to prevent immediate closing
+    event.stopPropagation();
+    
+    if (openDropdown === dropdown) {
+      openDropdown = null;
+    } else {
+      openDropdown = dropdown;
       
-      <!-- Activity Log Card -->
-      <div class="card activity-log-card">
-        <div class="card-header">
-          <h2>Activity Logs</h2>
-          <span class="record-count">
-            {totalCount} {totalCount === 1 ? 'record' : 'records'}
-          </span>
-        </div>
+      // Position the dropdown on the next tick
+      setTimeout(() => {
+        const dropdownEl = document.querySelector('.custom-dropdown.is-open');
+        const menuEl = dropdownEl?.querySelector('.dropdown-menu');
+        const triggerEl = dropdownEl?.querySelector('.dropdown-trigger');
         
-        <!-- Activity Filters -->
-        <div class="filter-section">
-          <div class="filter-header">
-            <h3>Filters</h3>
-            <button class="reset-filters-btn" on:click={resetFilters}>
-              <span class="material-icons">refresh</span>
-              Reset Filters
-            </button>
-          </div>
+        if (dropdownEl && menuEl && triggerEl) {
+          const rect = triggerEl.getBoundingClientRect();
           
-          <div class="filter-form">
-            <div class="filter-row">
-              <div class="filter-field">
-                <label for="filterUsername">Username</label>
-                <input 
-                  type="text" 
-                  id="filterUsername" 
-                  bind:value={filterUsername}
-                  placeholder="Filter by username"
-                />
-              </div>
-              
-              <div class="filter-field">
-                <label for="filterEntityType">Entity Type</label>
-                <input 
-                  type="text" 
-                  id="filterEntityType" 
-                  bind:value={filterEntityType}
-                  placeholder="Project, Version, etc."
-                />
-              </div>
-              
-              <div class="filter-field">
-                <label for="filterActionType">Action Type</label>
-                <input 
-                  type="text" 
-                  id="filterActionType" 
-                  bind:value={filterActionType}
-                  placeholder="Create, Update, Delete"
-                />
-              </div>
-            </div>
-            
-            <div class="filter-row">
-              <div class="filter-field">
-                <label for="filterProjectId">Project ID</label>
-                <input 
-                  type="text" 
-                  id="filterProjectId" 
-                  bind:value={filterProjectId}
-                  placeholder="Filter by project ID"
-                />
-              </div>
-              
-              <div class="filter-field">
-                <label for="filterFromDate">From Date</label>
-                <input 
-                  type="datetime-local" 
-                  id="filterFromDate" 
-                  bind:value={filterFromDate}
-                />
-              </div>
-              
-              <div class="filter-field">
-                <label for="filterToDate">To Date</label>
-                <input 
-                  type="datetime-local" 
-                  id="filterToDate" 
-                  bind:value={filterToDate}
-                />
-              </div>
-            </div>
-            
-            <div class="filter-actions">
-              <button class="apply-filters-btn" on:click={applyFilters}>
-                <span class="material-icons">filter_list</span>
-                Apply Filters
-              </button>
-            </div>
-          </div>
-        </div>
-        
-        {#if isLoadingActivities}
-          <div class="loading-container">
-            <div class="loader"></div>
-            <p>Loading activity logs...</p>
-          </div>
-        {:else if activityError}
-          <div class="error-container">
-            <span class="material-icons error-icon">error_outline</span>
-            <p>{activityError}</p>
-            <button class="btn-primary" on:click={loadActivities}>Try Again</button>
-          </div>
-        {:else if activities.length === 0}
-          <div class="empty-activities">
-            <span class="material-icons empty-icon">history</span>
-            <p>No activities found matching your criteria</p>
-            <button class="btn-secondary" on:click={resetFilters}>Clear Filters</button>
-          </div>
-        {:else}
-          <div class="activity-list">
-            {#each activities as activity (activity.id)}
-              <div class="activity-item" in:fade={{ duration: 150 }}>
-                <div class="activity-time">
-                  <span class="timestamp">{formatDate(activity.timestamp)}</span>
-                </div>
-                
-                <div class="activity-icon-container">
-                  <div class={`activity-icon ${getActionTypeClass(activity.actionType)}`}>
-                    <span class="material-icons">
-                      {#if activity.actionType.toLowerCase() === 'create'}
-                        add_circle
-                      {:else if activity.actionType.toLowerCase() === 'update'}
-                        edit
-                      {:else if activity.actionType.toLowerCase() === 'delete'}
-                        delete
-                      {:else}
-                        history
-                      {/if}
-                    </span>
-                  </div>
-                </div>
-                
-                <div class="activity-content">
-                  <div class="activity-summary">
-                    <span class="activity-username">{activity.username}</span>
-                    <span class="action-type">{activity.actionType}</span>
-                    <span class="entity-separator">a</span>
-                    <span class="entity-type">{activity.entityType}</span>
-                    <span class="entity-id">{activity.entityId}</span>
-                  </div>
-                  
-                  {#if activity.details}
-                    <div class="activity-details">
-                      {activity.details}
-                    </div>
-                  {/if}
-                </div>
-              </div>
-            {/each}
-          </div>
+          // Position the menu below the trigger button
+          // Use proper type assertions to fix TypeScript errors
+          (menuEl as HTMLElement).style.top = `${rect.bottom + 4}px`;
+          (menuEl as HTMLElement).style.left = `${rect.left}px`;
           
-          <!-- Pagination -->
-          {#if totalPages > 1}
-            <div class="pagination">
-              <button 
-                class="pagination-button"
-                on:click={() => changePage(1)}
-                disabled={currentPage === 1}
-              >
-                <span class="material-icons">first_page</span>
-              </button>
-              
-              <button 
-                class="pagination-button"
-                on:click={() => changePage(currentPage - 1)}
-                disabled={currentPage === 1}
-              >
-                <span class="material-icons">chevron_left</span>
-              </button>
-              
-              <div class="page-info">
-                <span>Page {currentPage} of {totalPages}</span>
-              </div>
-              
-              <button 
-                class="pagination-button"
-                on:click={() => changePage(currentPage + 1)}
-                disabled={currentPage === totalPages}
-              >
-                <span class="material-icons">chevron_right</span>
-              </button>
-              
-              <button 
-                class="pagination-button"
-                on:click={() => changePage(totalPages)}
-                disabled={currentPage === totalPages}
-              >
-                <span class="material-icons">last_page</span>
-              </button>
-            </div>
+          // Adjust if menu would go off-screen to the right
+          const menuRight = rect.left + (menuEl as HTMLElement).offsetWidth;
+          if (menuRight > window.innerWidth) {
+            (menuEl as HTMLElement).style.left =
+              `${window.innerWidth - (menuEl as HTMLElement).offsetWidth - 10}px`;
+          }
+        }
+      }, 0);
+    }
+  }
+  
+  // Close all dropdowns (for outside clicks)
+  function closeAllDropdowns() {
+    openDropdown = null;
+  }
+  
+  // Change page in pagination
+  function changePage(newPage: number) {
+    if (newPage >= 1 && newPage <= totalPages) {
+      currentPage = newPage;
+      loadActivities();
+    }
+  }
+  
+  // Load initial data
+  onMount(() => {
+    loadActivities();
+    
+    // Add click listener to close dropdowns when clicking outside
+    document.addEventListener('click', closeAllDropdowns);
+    
+    // Clean up event listener on component unmount
+    return () => {
+      document.removeEventListener('click', closeAllDropdowns);
+    };
+  });
+</script>
+
+<svelte:head>
+  <title>Admin Panel - TPServer</title>
+  <meta name="description" content="TPServer administrator activity monitoring" />
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+</svelte:head>
+
+<div class="page-container">
+  <header class="page-header">
+    <div class="header-content">
+      <div>
+        <h1>Activity Logs</h1>
+        <p class="text-muted">
+          {#if totalCount > 0}
+            Showing {activities.length} of {totalCount} activity {totalCount !== 1 ? 'records' : 'record'}
+          {:else}
+            Monitor system activities and user actions
           {/if}
-        {/if}
+        </p>
       </div>
     </div>
+  </header>
+  
+  <div class="controls-container">
+    <div class="search-controls">
+      <!-- Search Bar -->
+      <div class="search-wrapper">
+        <div class="search-icon">
+          <span class="material-icons">search</span>
+        </div>
+        <input
+          type="text"
+          bind:value={searchQuery}
+          placeholder="Search activities..."
+          on:keyup={(e) => e.key === 'Enter' && handleSearch()}
+          class="search-input"
+        />
+        {#if searchQuery}
+          <button class="clear-button" on:click={clearSearch} aria-label="Clear search">
+            <span class="material-icons">close</span>
+          </button>
+        {/if}
+      </div>
+
+      <div class="controls-right">
+        <!-- Custom Action Type Dropdown -->
+        <div class="custom-dropdown" class:is-open={openDropdown === 'action'}>
+          <button
+            class="dropdown-trigger"
+            on:click={(e) => toggleDropdown('action', e)}
+            aria-label="Filter by action type"
+          >
+            <span class="trigger-icon">
+              <!-- <span class="material-icons">rule</span> -->
+            </span>
+            <span class="trigger-text">
+              {filterActionType || 'Action Type'}
+            </span>
+            <span class="trigger-arrow">
+              <span class="material-icons">
+                {openDropdown === 'action' ? 'keyboard_arrow_up' : 'keyboard_arrow_down'}
+              </span>
+            </span>
+          </button>
+
+          {#if openDropdown === 'action'}
+            <div
+              class="dropdown-menu"
+              transition:scale={{ duration: 100, start: 0.95, opacity: 0 }}
+            >
+              <div class="dropdown-options">
+                <button
+                  class="dropdown-option {!filterActionType ? 'is-active' : ''}"
+                  on:click={() => setActionType('')}
+                >
+                  <span class="option-check">
+                    {#if !filterActionType}
+                      <span class="material-icons">check</span>
+                    {/if}
+                  </span>
+                  <span class="option-text">All Actions</span>
+                </button>
+
+                {#each commonActionTypes as type}
+                  <button
+                    class="dropdown-option {filterActionType === type ? 'is-active' : ''}"
+                    on:click={() => setActionType(type)}
+                  >
+                    <span class="option-check">
+                      {#if filterActionType === type}
+                        <span class="material-icons">check</span>
+                      {/if}
+                    </span>
+                    <span class="option-text">{type}</span>
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </div>
+        
+        <!-- Custom Entity Type Dropdown -->
+        <div class="custom-dropdown" class:is-open={openDropdown === 'entity'}>
+          <button
+            class="dropdown-trigger"
+            on:click={(e) => toggleDropdown('entity', e)}
+            aria-label="Filter by entity type"
+          >
+            <span class="trigger-text">
+              {filterEntityType || 'Entity Type'}
+            </span>
+            <span class="trigger-arrow">
+              <span class="material-icons">
+                {openDropdown === 'entity' ? 'keyboard_arrow_up' : 'keyboard_arrow_down'}
+              </span>
+            </span>
+          </button>
+
+          {#if openDropdown === 'entity'}
+            <div
+              class="dropdown-menu"
+              transition:scale={{ duration: 100, start: 0.95, opacity: 0 }}
+            >
+              <div class="dropdown-options">
+                <button
+                  class="dropdown-option {!filterEntityType ? 'is-active' : ''}"
+                  on:click={() => setEntityType('')}
+                >
+                  <span class="option-check">
+                    {#if !filterEntityType}
+                      <span class="material-icons">check</span>
+                    {/if}
+                  </span>
+                  <span class="option-text">All Entities</span>
+                </button>
+
+                {#each commonEntityTypes as type}
+                  <button
+                    class="dropdown-option {filterEntityType === type ? 'is-active' : ''}"
+                    on:click={() => setEntityType(type)}
+                  >
+                    <span class="option-check">
+                      {#if filterEntityType === type}
+                        <span class="material-icons">check</span>
+                      {/if}
+                    </span>
+                    <span class="option-text">{type}</span>
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        </div>
+      </div>
+    </div>
+    
+    <!-- Enhanced Active Filters -->
+    {#if filterEntityType || filterActionType || searchQuery}
+      <div class="active-filters" transition:fade={{ duration: 150 }}>
+        <div class="filter-content">
+          <span class="filter-label">Active filters:</span>
+
+          <div class="filter-tags">
+            {#if filterActionType}
+              <div class="filter-tag" transition:scale={{ duration: 120, start: 0.95 }}>
+                <span class="tag-icon">
+                  <span class="material-icons">rule</span>
+                </span>
+                <span class="tag-text">{filterActionType}</span>
+                <button
+                  class="tag-remove"
+                  on:click={() => setActionType('')}
+                  aria-label="Remove action type filter"
+                >
+                  <span class="material-icons">close</span>
+                </button>
+              </div>
+            {/if}
+
+            {#if filterEntityType}
+              <div class="filter-tag" transition:scale={{ duration: 120, start: 0.95 }}>
+                <span class="tag-icon">
+                  <span class="material-icons">category</span>
+                </span>
+                <span class="tag-text">{filterEntityType}</span>
+                <button
+                  class="tag-remove"
+                  on:click={() => setEntityType('')}
+                  aria-label="Remove entity type filter"
+                >
+                  <span class="material-icons">close</span>
+                </button>
+              </div>
+            {/if}
+
+            {#if searchQuery}
+              <div class="filter-tag" transition:scale={{ duration: 120, start: 0.95 }}>
+                <span class="tag-icon">
+                  <span class="material-icons">search</span>
+                </span>
+                <span class="tag-text">{searchQuery}</span>
+                <button class="tag-remove" on:click={clearSearch} aria-label="Remove search filter">
+                  <span class="material-icons">close</span>
+                </button>
+              </div>
+            {/if}
+          </div>
+
+          <button class="clear-all-btn" on:click={resetFilters}> Clear All </button>
+        </div>
+      </div>
+    {/if}
   </div>
   
-  <style>
-    /* Page Layout */
-    .page-container {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 0 1rem;
-    }
+  {#if isLoadingActivities}
+    <div class="loading-container">
+      <div class="loader"></div>
+      <p>Loading activity logs...</p>
+    </div>
+  {:else if activityError}
+    <div class="error-container">
+      <span class="material-icons error-icon">error_outline</span>
+      <p>{activityError}</p>
+      <button class="btn-primary" on:click={loadActivities}>Try Again</button>
+    </div>
+  {:else if activities.length === 0}
+    <div class="empty-state">
+      <div class="empty-icon-container">
+        <span class="material-icons empty-icon">history</span>
+      </div>
+      <h2>No Activities Found</h2>
+      {#if searchQuery || filterEntityType || filterActionType}
+        <p>No activities matched your search criteria. Try a different query or clear the filters.</p>
+        <div class="empty-actions">
+          <button class="btn-secondary" on:click={resetFilters}>Clear All Filters</button>
+        </div>
+      {:else}
+        <p>There are no activities recorded in the system yet.</p>
+      {/if}
+    </div>
+  {:else}
+    <div class="activities-list">
+      {#each activities as activity (activity.id)}
+        <div 
+          class="activity-card" 
+          in:fade={{ duration: 150 }}
+        >
+          <div class="card-header">
+            <div class="user-info">
+              <div class="avatar">
+                {activity.username?.charAt(0).toUpperCase() || '?'}
+              </div>
+              <span class="username">{activity.username || 'Unknown User'}</span>
+            </div>
+            
+            <div class="action-badge-wrapper">
+              <div class={`action-badge ${getActionTypeClass(activity.actionType)}`}>
+                <span class="material-icons">
+                  {getActionIcon(activity.actionType)}
+                </span>
+                <span>{activity.actionType || 'Action'}</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="card-body">
+            <div class="entity-info">
+              <span class="entity-label">Entity:</span>
+              <span class="entity-type">{activity.entityType || 'Unknown'}</span>
+              <span class="entity-id" title={activity.entityId}>
+                {activity.entityId || 'No ID'}
+              </span>
+            </div>
+            
+            {#if activity.description}
+              <div class="activity-description">
+                <p>{activity.description}</p>
+              </div>
+            {/if}
+            
+            <div class="card-meta">
+              <div class="meta-item">
+                <span class="material-icons meta-icon">update</span>
+                <span>{formatDate(activity.timestamp)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      {/each}
+    </div>
     
-    .page-header {
-      margin-bottom: 1.5rem;
+    <!-- Pagination -->
+    {#if totalPages > 1}
+      <div class="pagination">
+        <button 
+          class="pagination-button tooltip"
+          on:click={() => changePage(1)}
+          disabled={currentPage === 1}
+          data-tooltip="First Page"
+        >
+          <span class="material-icons">first_page</span>
+        </button>
+        
+        <button 
+          class="pagination-button tooltip"
+          on:click={() => changePage(currentPage - 1)}
+          disabled={currentPage === 1 || !hasPreviousPage}
+          data-tooltip="Previous Page"
+        >
+          <span class="material-icons">chevron_left</span>
+        </button>
+        
+        <div class="page-numbers">
+          {#if totalPages <= 7}
+            {#each Array(totalPages) as _, i}
+              <button 
+                class="page-number" 
+                class:active={currentPage === i + 1}
+                on:click={() => changePage(i + 1)}
+              >
+                {i + 1}
+              </button>
+            {/each}
+          {:else}
+            <!-- First page always shown -->
+            <button 
+              class="page-number" 
+              class:active={currentPage === 1}
+              on:click={() => changePage(1)}
+            >
+              1
+            </button>
+            
+            <!-- Show ellipsis if we're not at the beginning -->
+            {#if currentPage > 3}
+              <span class="page-ellipsis">...</span>
+            {/if}
+            
+            <!-- Pages around current page -->
+            {#each Array(Math.min(5, totalPages)).fill(0) as _, i}
+              {#if currentPage - 2 + i > 1 && currentPage - 2 + i < totalPages}
+                <button 
+                  class="page-number" 
+                  class:active={currentPage === currentPage - 2 + i}
+                  on:click={() => changePage(currentPage - 2 + i)}
+                >
+                  {currentPage - 2 + i}
+                </button>
+              {/if}
+            {/each}
+            
+            <!-- Show ellipsis if we're not at the end -->
+            {#if currentPage < totalPages - 2}
+              <span class="page-ellipsis">...</span>
+            {/if}
+            
+            <!-- Last page always shown -->
+            <button 
+              class="page-number" 
+              class:active={currentPage === totalPages}
+              on:click={() => changePage(totalPages)}
+            >
+              {totalPages}
+            </button>
+          {/if}
+        </div>
+        
+        <button 
+          class="pagination-button tooltip"
+          on:click={() => changePage(currentPage + 1)}
+          disabled={currentPage === totalPages || !hasNextPage}
+          data-tooltip="Next Page"
+        >
+          <span class="material-icons">chevron_right</span>
+        </button>
+        
+        <button 
+          class="pagination-button tooltip"
+          on:click={() => changePage(totalPages)}
+          disabled={currentPage === totalPages}
+          data-tooltip="Last Page"
+        >
+          <span class="material-icons">last_page</span>
+        </button>
+        
+        <div class="pagination-info">
+          <span>Page {currentPage} of {totalPages}</span>
+        </div>
+      </div>
+    {/if}
+  {/if}
+</div>
+
+<style>
+  /* ===== Main Layout ===== */
+  .page-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0.8rem;
+  }
+  
+  /* ===== Page Header ===== */
+  .page-header {
+    margin-bottom: 1rem;
+  }
+  
+  .header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  h1 {
+    font-size: 1.5rem;
+    margin: 0;
+    color: #1e3a8a;
+    font-weight: 500;
+  }
+  
+  .text-muted {
+    color: #64748b;
+    margin: 0.2rem 0 0;
+    font-size: 0.75rem;
+  }
+  
+  /* ===== Search and Filter Controls ===== */
+  .controls-container {
+    margin-bottom: 1rem;
+    background-color: white;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+  }
+  
+  .search-controls {
+    display: flex;
+    padding: 0.6rem;
+    gap: 0.6rem;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+  
+  /* Enhanced Search Bar Styling */
+  .search-wrapper {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    min-width: 180px;
+    max-width: 450px;
+    position: relative;
+  }
+  
+  .search-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+  }
+  
+  .search-icon .material-icons {
+    font-size: 0.9rem;
+  }
+  
+  .search-input {
+    width: 100%;
+    padding: 0.5rem 0.6rem 0.5rem 2rem;
+    border-radius: 4px;
+    border: 1px solid #e2e8f0;
+    font-size: 0.8rem;
+    background-color: #f8fafc;
+    transition: all 0.2s ease;
+    color: #334155;
+    height: 34px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  }
+  
+  .search-input:focus {
+    outline: none;
+    border-color: #5c9fff;
+    background-color: white;
+    box-shadow: 0 0 0 2px rgba(92, 159, 255, 0.15);
+  }
+  
+  .clear-button {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 0.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    transition: all 0.15s ease;
+  }
+  
+  .clear-button:hover {
+    background-color: #f1f5f9;
+    color: #475569;
+  }
+  
+  .clear-button .material-icons {
+    font-size: 0.8rem;
+  }
+  
+  .controls-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  
+  /* Custom Dropdown Styling */
+  .custom-dropdown {
+    position: relative;
+    user-select: none;
+    z-index: 10; /* Basic z-index for the container */
+  }
+  
+  .dropdown-trigger {
+    height: 34px;
+    padding: 0 0.6rem;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    color: #334155;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    font-weight: 400;
+    font-family: inherit;
+  }
+  
+  .dropdown-trigger:hover {
+    background-color: #f1f5f9;
+  }
+  
+  .custom-dropdown.is-open {
+    z-index: 1002; /* Higher z-index when open to ensure it appears above other elements */
+  }
+  
+  .custom-dropdown.is-open .dropdown-trigger {
+    background-color: #f1f5f9;
+    border-color: #cbd5e1;
+  }
+  
+  .trigger-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+  }
+  
+  .trigger-icon .material-icons {
+    font-size: 0.9rem;
+  }
+  
+  .trigger-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .trigger-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+  }
+  
+  .trigger-arrow .material-icons {
+    font-size: 0.9rem;
+    transition: transform 0.2s ease;
+  }
+  
+  .dropdown-menu {
+    position: fixed; /* Use fixed positioning instead of absolute */
+    /* Remove top/left positioning - will be set dynamically */
+    min-width: 150px;
+    max-width: 220px;
+    background-color: white;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1002; /* Ensure it's above other elements */
+    overflow: visible; /* Changed from hidden to visible */
+    border: 1px solid #e2e8f0;
+  }
+  
+  .dropdown-options {
+    max-height: 200px;
+    overflow-y: auto;
+    padding: 0.3rem 0;
+  }
+  
+  .dropdown-option {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 0.4rem 0.6rem;
+    gap: 0.4rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: #334155;
+    text-align: left;
+    transition: background-color 0.15s ease;
+    font-family: inherit;
+  }
+  
+  .dropdown-option:hover {
+    background-color: #f1f5f9;
+  }
+  
+  .dropdown-option.is-active {
+    background-color: #f0f7ff;
+    color: #1d4ed8;
+  }
+  
+  .option-check {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  
+  .option-check .material-icons {
+    font-size: 14px;
+    color: #1d4ed8;
+  }
+  
+  .option-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .option-icon .material-icons {
+    font-size: 14px;
+    color: #64748b;
+  }
+  
+  .option-text {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  /* Enhanced Active Filters */
+  .active-filters {
+    padding: 0.6rem;
+    border-top: 1px solid #e2e8f0;
+    background-color: #f8fafc;
+  }
+  
+  .filter-content {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    align-items: center;
+  }
+  
+  .filter-label {
+    font-size: 0.75rem;
+    color: #64748b;
+    font-weight: 500;
+  }
+  
+  .filter-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    flex: 1;
+  }
+  
+  .filter-tag {
+    display: flex;
+    align-items: center;
+    background-color: #e0f2fe;
+    color: #0369a1;
+    padding: 0.25rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    gap: 0.4rem;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    animation: slideIn 0.2s ease;
+  }
+  
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-5px);
     }
-    
-    h1 {
-      font-size: 1.5rem;
-      margin: 0;
-      color: #1e3a8a;
-      font-weight: 500;
+    to {
+      opacity: 1;
+      transform: translateY(0);
     }
-    
-    .subtitle {
-      margin: 0.25rem 0 0;
-      color: #64748b;
-      font-size: 0.9rem;
+  }
+  
+  .tag-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .tag-icon .material-icons {
+    font-size: 0.75rem;
+  }
+  
+  .tag-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  .tag-remove {
+    background: none;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #0369a1;
+    cursor: pointer;
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    transition: background-color 0.15s ease;
+  }
+  
+  .tag-remove:hover {
+    background-color: rgba(2, 132, 199, 0.15);
+  }
+  
+  .tag-remove .material-icons {
+    font-size: 0.7rem;
+  }
+  
+  .clear-all-btn {
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    background-color: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    color: #64748b;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: inherit;
+  }
+  
+  .clear-all-btn:hover {
+    background-color: #e2e8f0;
+    color: #475569;
+  }
+  
+  /* ===== Loading, Error, Empty States ===== */
+  .loading-container,
+  .error-container,
+  .empty-state {
+    padding: 3rem 1.5rem;
+    text-align: center;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-bottom: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  
+  .loader {
+    border: 3px solid rgba(92, 159, 255, 0.2);
+    border-left-color: #5c9fff;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    animation: spin 1s linear infinite;
+  }
+  
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
     }
-    
-    .admin-grid {
-      display: grid;
-      grid-template-columns: 1fr 2fr;
-      gap: 1.5rem;
+  }
+  
+  .error-icon,
+  .empty-icon {
+    font-size: 2.5rem;
+    color: #6c757d;
+    opacity: 0.5;
+  }
+  
+  .error-container p {
+    color: #dc2626;
+    font-weight: 500;
+    font-size: 0.9rem;
+  }
+  
+  .empty-icon-container {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background-color: #f1f5f9;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .empty-state h2 {
+    margin: 0;
+    color: #1e3a8a;
+    font-size: 1.3rem;
+  }
+  
+  .empty-state p {
+    color: #6c757d;
+    max-width: 500px;
+    margin: 0 auto;
+    font-size: 0.9rem;
+  }
+  
+  .empty-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  
+  /* ===== Activity Cards ===== */
+  .activities-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  .activity-card {
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    transition: all 0.2s ease;
+    border: 1px solid #e2e8f0;
+  }
+  
+  .activity-card:hover {
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+  }
+  
+  .card-header {
+    padding: 0.75rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  
+  .user-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  .avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background-color: #5c9fff;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  
+  .username {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #1e3a8a;
+  }
+  
+  .action-badge-wrapper {
+    display: flex;
+    align-items: center;
+  }
+  
+  .action-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  
+  .action-badge .material-icons {
+    font-size: 0.9rem;
+  }
+  
+  .action-create {
+    background-color: #dcfce7;
+    color: #16a34a;
+  }
+  
+  .action-update {
+    background-color: #fef3c7;
+    color: #d97706;
+  }
+  
+  .action-delete {
+    background-color: #fee2e2;
+    color: #dc2626;
+  }
+  
+  .action-other {
+    background-color: #f1f5f9;
+    color: #64748b;
+  }
+  
+  .card-body {
+    padding: 0.75rem 1rem;
+  }
+  
+  .entity-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    flex-wrap: wrap;
+  }
+  
+  .entity-label {
+    font-size: 0.75rem;
+    color: #64748b;
+    font-weight: 500;
+  }
+  
+  .entity-type {
+    display: inline-flex;
+    padding: 0.15rem 0.35rem;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    background-color: #5c9fff;
+    color: white;
+    white-space: nowrap;
+    font-weight: 500;
+  }
+  
+  .entity-id {
+    font-family: monospace;
+    font-size: 0.75rem;
+    color: #1e3a8a;
+    background-color: #f1f5f9;
+    padding: 0.15rem 0.35rem;
+    border-radius: 3px;
+  }
+  
+  .activity-description {
+    margin: 0.5rem 0;
+    font-size: 0.85rem;
+    color: #334155;
+    line-height: 1.4;
+  }
+  
+  .activity-description p {
+    margin: 0;
+  }
+  
+  .card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+  }
+  
+  .meta-item {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: #64748b;
+    font-size: 0.75rem;
+  }
+  
+  .meta-icon {
+    font-size: 0.9rem;
+    color: #94a3b8;
+  }
+  
+  /* ===== Pagination ===== */
+  .pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.25rem;
+    margin-top: 1rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    padding: 0.75rem;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+  
+  .pagination-button {
+    width: 30px;
+    height: 30px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  
+  .pagination-button .material-icons {
+    font-size: 1rem;
+  }
+  
+  .pagination-button:hover:not(:disabled) {
+    background-color: #e2e8f0;
+  }
+  
+  .pagination-button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  
+  .page-numbers {
+    display: flex;
+    gap: 0.25rem;
+  }
+  
+  .page-number {
+    min-width: 30px;
+    height: 30px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    color: #64748b;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-size: 0.85rem;
+    padding: 0 0.5rem;
+  }
+  
+  .page-number.active {
+    background-color: #5c9fff;
+    color: white;
+    border-color: #5c9fff;
+  }
+  
+  .page-number:hover:not(.active) {
+    background-color: #e2e8f0;
+  }
+  
+  .page-ellipsis {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    color: #64748b;
+    font-size: 0.85rem;
+  }
+  
+  .pagination-info {
+    margin-left: 0.5rem;
+    color: #64748b;
+    font-size: 0.85rem;
+    padding: 0 0.5rem;
+  }
+  
+  /* Tooltip styles */
+  .tooltip {
+    position: relative;
+  }
+  
+  .tooltip:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: -30px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0.25rem 0.5rem;
+    background-color: rgba(0, 0, 0, 0.8);
+    color: white;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    white-space: nowrap;
+    z-index: 1010;
+    pointer-events: none;
+    opacity: 0;
+    animation: fadeIn 0.2s ease-in-out forwards;
+  }
+  
+  .tooltip:hover::before {
+    content: '';
+    position: absolute;
+    top: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-width: 5px;
+    border-style: solid;
+    border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
+    z-index: 1010;
+    opacity: 0;
+    animation: fadeIn 0.2s ease-in-out forwards;
+  }
+  
+  .pagination .tooltip:hover::after {
+    top: auto;
+    bottom: 35px;
+  }
+  
+  .pagination .tooltip:hover::before {
+    top: auto;
+    bottom: 25px;
+    border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
+  }
+  
+  @keyframes fadeIn {
+    to {
+      opacity: 1;
     }
-    
-    /* Common Card Styles */
-    .card {
-      background-color: white;
-      border-radius: 8px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-      overflow: hidden;
-      margin-bottom: 1.5rem;
-      display: flex;
+  }
+  
+  /* Buttons */
+  .btn-primary, .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border: none;
+  }
+  
+  .btn-primary {
+    background-color: #5c9fff;
+    color: white;
+  }
+  
+  .btn-primary:hover:not(:disabled) {
+    background-color: #4a89e8;
+  }
+  
+  .btn-secondary {
+    background-color: #f1f5f9;
+    color: #334155;
+    border: 1px solid #e2e8f0;
+  }
+  
+  .btn-secondary:hover:not(:disabled) {
+    background-color: #e2e8f0;
+  }
+  
+  .btn-primary:disabled, .btn-secondary:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+  
+  /* ===== Responsive Styles ===== */
+  @media (max-width: 768px) {
+    .header-content {
       flex-direction: column;
+      align-items: flex-start;
+      gap: 0.75rem;
+    }
+    
+    .search-controls {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    
+    .search-wrapper {
+      width: 100%;
+      max-width: none;
+    }
+    
+    .controls-right {
+      width: 100%;
+      justify-content: space-between;
+      margin-top: 0.5rem;
     }
     
     .card-header {
-      padding: 1rem 1.25rem;
-      background-color: #f8fafc;
-      border-bottom: 1px solid #e2e8f0;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    
-    .card-header h2 {
-      margin: 0;
-      font-size: 1.1rem;
-      color: #1e3a8a;
-      font-weight: 500;
-    }
-    
-    .record-count {
-      font-size: 0.75rem;
-      color: #64748b;
-      background-color: #f1f5f9;
-      padding: 0.25rem 0.5rem;
-      border-radius: 12px;
-    }
-    
-    /* Loading, Error, Empty States */
-    .loading-container, .error-container, .empty-activities {
-      padding: 2rem 1rem;
-      display: flex;
       flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 0.75rem;
-      text-align: center;
-    }
-    
-    .loader {
-      border: 3px solid rgba(92, 159, 255, 0.2);
-      border-left-color: #5c9fff;
-      border-radius: 50%;
-      width: 32px;
-      height: 32px;
-      animation: spin 1s linear infinite;
-    }
-    
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-    
-    .error-icon, .empty-icon {
-      font-size: 2rem;
-      color: #94a3b8;
-    }
-    
-    .error-container p {
-      color: #dc2626;
-      font-weight: 500;
-    }
-    
-    .empty-activities p {
-      color: #64748b;
-    }
-    
-    /* User Registration Styles */
-    .registration-form {
-      padding: 1.25rem;
-    }
-    
-    .alert {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.75rem 1rem;
-      border-radius: 4px;
-      margin-bottom: 1.25rem;
-      font-size: 0.85rem;
-    }
-    
-    .alert-success {
-      background-color: #dcfce7;
-      color: #16a34a;
-    }
-    
-    .alert-error {
-      background-color: #fee2e2;
-      color: #dc2626;
-    }
-    
-    .alert .material-icons {
-      font-size: 1.1rem;
-    }
-    
-    .form-group {
-      margin-bottom: 1.25rem;
-    }
-    
-    label {
-      display: block;
-      margin-bottom: 0.4rem;
-      font-size: 0.85rem;
-      font-weight: 500;
-      color: #334155;
-    }
-    
-    .input-container {
-      position: relative;
-      display: flex;
-      align-items: center;
-    }
-    
-    .input-icon {
-      position: absolute;
-      left: 0.75rem;
-      color: #94a3b8;
-      font-size: 1.1rem;
-    }
-    
-    input {
-      width: 100%;
-      padding: 0.6rem 0.75rem 0.6rem 2.5rem;
-      border: 1px solid #e2e8f0;
-      border-radius: 4px;
-      font-size: 0.85rem;
-      background-color: #f8fafc;
-      transition: all 0.2s;
-    }
-    
-    input:focus {
-      outline: none;
-      border-color: #5c9fff;
-      background-color: white;
-      box-shadow: 0 0 0 2px rgba(92, 159, 255, 0.1);
-    }
-    
-    input.error {
-      border-color: #dc2626;
-      background-color: #fee2e2;
-    }
-    
-    .error-message {
-      color: #dc2626;
-      font-size: 0.75rem;
-      margin-top: 0.25rem;
-    }
-    
-    .roles-container {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 1rem;
-      margin-top: 0.5rem;
-    }
-    
-    .role-checkbox {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      cursor: pointer;
-      font-weight: normal;
-      margin-bottom: 0;
-    }
-    
-    .checkbox-label {
-      font-size: 0.85rem;
-      color: #334155;
-    }
-    
-    .form-actions {
-      display: flex;
-      justify-content: flex-end;
-      margin-top: 1.5rem;
-    }
-    
-    .btn-primary, .btn-secondary {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.5rem 1rem;
-      border-radius: 4px;
-      font-size: 0.85rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.15s ease;
-      border: none;
-    }
-    
-    .btn-primary {
-      background-color: #5c9fff;
-      color: white;
-    }
-    
-    .btn-primary:hover:not(:disabled) {
-      background-color: #4a89e8;
-    }
-    
-    .btn-secondary {
-      background-color: #f1f5f9;
-      color: #334155;
-      border: 1px solid #e2e8f0;
-    }
-    
-    .btn-secondary:hover:not(:disabled) {
-      background-color: #e2e8f0;
-    }
-    
-    .button-spinner {
-      border: 2px solid rgba(255, 255, 255, 0.3);
-      border-left-color: white;
-      border-radius: 50%;
-      width: 16px;
-      height: 16px;
-      animation: spin 1s linear infinite;
-    }
-    
-    /* Activity Log Styles */
-    .filter-section {
-      padding: 1.25rem;
-      border-bottom: 1px solid #f1f5f9;
-    }
-    
-    .filter-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 1rem;
-    }
-    
-    .filter-header h3 {
-      margin: 0;
-      font-size: 0.95rem;
-      color: #334155;
-      font-weight: 500;
-    }
-    
-    .reset-filters-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.25rem;
-      font-size: 0.75rem;
-      color: #5c9fff;
-      background: none;
-      border: none;
-      cursor: pointer;
-      padding: 0.25rem 0.5rem;
-      border-radius: 4px;
-      transition: all 0.15s ease;
-    }
-    
-    .reset-filters-btn:hover {
-      background-color: rgba(92, 159, 255, 0.1);
-    }
-    
-    .reset-filters-btn .material-icons {
-      font-size: 0.9rem;
-    }
-    
-    .filter-form {
-      display: flex;
-      flex-direction: column;
-      gap: 1rem;
-    }
-    
-    .filter-row {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 1rem;
-    }
-    
-    .filter-field {
-      display: flex;
-      flex-direction: column;
-      gap: 0.25rem;
-    }
-    
-    .filter-field input {
-      padding: 0.5rem 0.75rem;
-    }
-    
-    .filter-actions {
-      display: flex;
-      justify-content: flex-end;
-      margin-top: 0.5rem;
-    }
-    
-    .apply-filters-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.25rem;
-      padding: 0.4rem 0.75rem;
-      border-radius: 4px;
-      font-size: 0.8rem;
-      font-weight: 500;
-      cursor: pointer;
-      background-color: #5c9fff;
-      color: white;
-      border: none;
-      transition: all 0.15s ease;
-    }
-    
-    .apply-filters-btn:hover {
-      background-color: #4a89e8;
-    }
-    
-    .apply-filters-btn .material-icons {
-      font-size: 0.9rem;
-    }
-    
-    /* Activity List */
-    .activity-list {
-      padding: 1rem 0;
-      overflow-y: auto;
-      max-height: 600px;
-    }
-    
-    .activity-item {
-      display: flex;
-      padding: 0.75rem 1.25rem;
-      border-bottom: 1px solid #f1f5f9;
-      gap: 0.75rem;
-    }
-    
-    .activity-item:last-child {
-      border-bottom: none;
-    }
-    
-    .activity-time {
-      min-width: 110px;
-      flex-shrink: 0;
-    }
-    
-    .timestamp {
-      font-size: 0.75rem;
-      color: #64748b;
-      white-space: nowrap;
-    }
-    
-    .activity-icon-container {
-      display: flex;
       align-items: flex-start;
-      padding-top: 0.25rem;
-    }
-    
-    .activity-icon {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-    
-    .activity-icon .material-icons {
-      font-size: 0.9rem;
-    }
-    
-    .activity-icon.action-create {
-      background-color: #dcfce7;
-      color: #16a34a;
-    }
-    
-    .activity-icon.action-update {
-      background-color: #fef3c7;
-      color: #d97706;
-    }
-    
-    .activity-icon.action-delete {
-      background-color: #fee2e2;
-      color: #dc2626;
-    }
-    
-    .activity-icon.action-other {
-      background-color: #f1f5f9;
-      color: #64748b;
-    }
-    
-    .activity-content {
-      flex: 1;
-      min-width: 0;
-    }
-    
-    .activity-summary {
-      font-size: 0.85rem;
-      color: #334155;
-      margin-bottom: 0.25rem;
-    }
-    
-    .activity-username {
-      font-weight: 600;
-      color: #1e3a8a;
-    }
-    
-    .action-type {
-      font-weight: 500;
-      text-transform: lowercase;
-    }
-    
-    .entity-separator {
-      margin: 0 0.2rem;
-      color: #94a3b8;
-    }
-    
-    .entity-type {
-      font-weight: 500;
-    }
-    
-    .entity-id {
-      margin-left: 0.25rem;
-      font-family: monospace;
-      color: #64748b;
-      font-size: 0.8rem;
-    }
-    
-    .activity-details {
-      font-size: 0.8rem;
-      color: #64748b;
-      white-space: pre-wrap;
-      overflow-wrap: break-word;
-    }
-    
-    /* Pagination */
-    .pagination {
-      display: flex;
-      align-items: center;
-      justify-content: center;
       gap: 0.5rem;
-      padding: 1rem;
-      border-top: 1px solid #f1f5f9;
     }
     
-    .pagination-button {
-      width: 30px;
-      height: 30px;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
+    .action-badge-wrapper {
+      align-self: flex-start;
+    }
+    
+    .pagination-info {
+      width: 100%;
+      text-align: center;
+      margin: 0.5rem 0 0;
+    }
+  }
+  
+  @media (max-width: 576px) {
+    .custom-dropdown, .dropdown-trigger {
+      width: 100%;
+    }
+    
+    .controls-right {
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    
+    .pagination {
+      padding: 0.75rem 0.5rem;
+    }
+    
+    .page-numbers {
+      order: -1;
+      width: 100%;
       justify-content: center;
-      background-color: #f1f5f9;
-      border: 1px solid #e2e8f0;
-      color: #334155;
-      cursor: pointer;
-      transition: all 0.15s ease;
+      margin-bottom: 0.4rem;
     }
-    
-    .pagination-button:hover:not(:disabled) {
-      background-color: #e2e8f0;
-    }
-    
-    .pagination-button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    
-    .pagination-button .material-icons {
-      font-size: 1.1rem;
-    }
-    
-    .page-info {
-      margin: 0 0.5rem;
-      font-size: 0.85rem;
-      color: #64748b;
-    }
-    
-    /* Responsive Layout */
-    @media (max-width: 992px) {
-      .admin-grid {
-        grid-template-columns: 1fr;
-        gap: 1rem;
-      }
-      
-      .user-registration-card {
-        order: 1;
-      }
-      
-      .activity-log-card {
-        order: 2;
-      }
-    }
-    
-    @media (max-width: 768px) {
-      .filter-row {
-        grid-template-columns: 1fr;
-        gap: 0.75rem;
-      }
-      
-      .activity-item {
-        flex-direction: column;
-        gap: 0.5rem;
-      }
-      
-      .activity-time {
-        width: 100%;
-      }
-      
-      .activity-icon-container {
-        display: none;
-      }
-    }
-  </style>
+  }
+</style>

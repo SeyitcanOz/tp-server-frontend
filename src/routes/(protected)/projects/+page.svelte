@@ -1112,7 +1112,7 @@
 		margin: 0;
 		color: #1e3a8a;
 		font-weight: 500;
-	}
+  }
 
 	.text-muted {
 		color: #64748b;
