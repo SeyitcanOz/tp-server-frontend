@@ -6,7 +6,6 @@
 	import type { PagedResponse, ProjectSummary } from '$lib/types/project';
 	import { fade, fly, scale } from 'svelte/transition';
 	import DeleteConfirmationModal from '$lib/components/DeleteConfirmationModal.svelte';
-	import CreateProjectForm from '$lib/components/CreateProjectForm.svelte'; // Added import
   
 	// Variables for filtering and state
 	let projects: ProjectSummary[] = [];
@@ -48,9 +47,6 @@
 	let isDeleting = false;
 	let deleteError: string | null = null;
   
-	// Create project form state
-	let showCreateProjectForm = false;
-  
 	// Pagination info
 	let hasNextPage = false;
 	let hasPreviousPage = false;
@@ -66,11 +62,6 @@
 	function closeDeleteModal() {
 	  showDeleteModal = false;
 	  projectToDelete = null;
-	}
-  
-	// Toggle create project form
-	function toggleCreateProjectForm() {
-	  showCreateProjectForm = !showCreateProjectForm;
 	}
   
 	// Confirm and execute delete
@@ -494,11 +485,10 @@
 		  </p>
 		</div>
 		<div class="header-actions">
-		  <!-- Changed from <a> to button that opens form -->
-		  <button on:click={toggleCreateProjectForm} class="btn-primary">
-			<span class="material-icons">add</span>
-			Create Project
-		  </button>
+			<a href="/projects/new" class="btn-primary">
+				<span class="material-icons">add</span>
+				Create Project
+			  </a>
 		</div>
 	  </div>
 	</header>
@@ -1096,11 +1086,6 @@
     />
   {/if}
 
-  <!-- Create Project Form -->
-  <CreateProjectForm 
-    isOpen={showCreateProjectForm} 
-    on:close={toggleCreateProjectForm}
-  />
 </div>
 
 <style>
