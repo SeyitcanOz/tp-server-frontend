@@ -1,4 +1,3 @@
-<!-- src/lib/components/FileDropzone.svelte -->
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
   

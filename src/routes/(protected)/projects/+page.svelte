@@ -6,6 +6,7 @@
 	import type { PagedResponse, ProjectSummary } from '$lib/types/project';
 	import { fade, fly, scale } from 'svelte/transition';
 	import DeleteConfirmationModal from '$lib/components/DeleteConfirmationModal.svelte';
+	import CreateProjectForm from '$lib/components/CreateProjectForm.svelte';
   
 	// Variables for filtering and state
 	let projects: ProjectSummary[] = [];
@@ -21,6 +22,8 @@
 	let sortOrder: 'name' | 'updated' | 'version' = 'name';
 	let modellingTypes: string[] = [];
 	let selectedModellingType = '';
+
+	let showCreateProjectModal = false; // new
   
 	// For tracking which dropdown is open
 	let openMenuId: string | null = null;
@@ -485,11 +488,11 @@
 		  </p>
 		</div>
 		<div class="header-actions">
-			<a href="/projects/new" class="btn-primary">
-				<span class="material-icons">add</span>
-				Create Project
-			  </a>
-		</div>
+			<button class="btn-primary" on:click={() => showCreateProjectModal = true}>
+			  <span class="material-icons">add</span>
+			  Create Project
+			</button>
+		  </div>
 	  </div>
 	</header>
 
@@ -820,7 +823,9 @@
 				</div>
 			{:else}
 				<p>You don't have any projects yet. Create your first project to get started.</p>
-				<a href="/projects/new" class="btn-primary">Create First Project</a>
+				<button class="btn-primary" on:click={() => showCreateProjectModal = true}>
+					Create First Project
+				</button>
 			{/if}
 		</div>
 	{:else}
@@ -1085,6 +1090,16 @@
       on:cancel={closeDeleteModal}
     />
   {/if}
+
+  <CreateProjectForm 
+  isOpen={showCreateProjectModal} 
+  on:close={() => showCreateProjectModal = false}
+  on:projectCreated={() => {
+    // Will be called when a project is created, even if user stays in modal
+    loadProjects();
+  }}
+  on:refreshProjects={() => loadProjects()}
+/>
 
 </div>
 
