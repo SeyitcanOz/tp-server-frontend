@@ -6,6 +6,7 @@ import type {
   CreateProjectRequest, 
   UpdateProjectRequest 
 } from '$lib/types/project';
+import { cache, withCache, getCacheKey } from '$lib/stores/cache';
 
 /**
  * Project service for managing project-related API operations
@@ -27,35 +28,55 @@ export const projectService = {
   ): Promise<PagedResponse<ProjectSummary>> {
     const { userId, searchTerm, modellingType, sortBy, sortDescending } = options;
     
-    const response = await api.get<PagedResponse<ProjectSummary>>('/api/projects', {
-      params: {
-        pageNumber,
-        pageSize,
-        userId,
-        searchTerm,
-        modellingType,
-        sortBy,
-        sortDescending
-      }
+    const cacheKey = getCacheKey('projects', undefined, {
+      pageNumber,
+      pageSize,
+      userId,
+      searchTerm,
+      modellingType,
+      sortBy,
+      sortDescending
     });
     
-    return response.data;
+    return withCache(cacheKey, async () => {
+      const response = await api.get<PagedResponse<ProjectSummary>>('/api/projects', {
+        params: {
+          pageNumber,
+          pageSize,
+          userId,
+          searchTerm,
+          modellingType,
+          sortBy,
+          sortDescending
+        }
+      });
+      
+      return response.data;
+    }, 60); // Cache for 1 minute
   },
 
   /**
    * Get a project by ID
    */
   async getProjectById(id: string): Promise<ProjectDetail> {
-    const response = await api.get<ProjectDetail>(`/api/projects/${id}`);
-    return response.data;
+    const cacheKey = getCacheKey('project', id);
+    
+    return withCache(cacheKey, async () => {
+      const response = await api.get<ProjectDetail>(`/api/projects/${id}`);
+      return response.data;
+    }, 300); // Cache for 5 minutes
   },
 
   /**
    * Get available modelling types for filtering
    */
   async getModellingTypes(): Promise<string[]> {
-    const response = await api.get<string[]>('/api/projects/modelling-types');
-    return response.data;
+    const cacheKey = getCacheKey('modellingTypes');
+    
+    return withCache(cacheKey, async () => {
+      const response = await api.get<string[]>('/api/projects/modelling-types');
+      return response.data;
+    }, 3600); // Cache for 1 hour since this rarely changes
   },
 
   /**
@@ -63,6 +84,10 @@ export const projectService = {
    */
   async createProject(project: CreateProjectRequest): Promise<ProjectDetail> {
     const response = await api.post<ProjectDetail>('/api/projects', project);
+    
+    // Clear projects list cache after creating a new project
+    cache.clearByPrefix('projects');
+    
     return response.data;
   },
 
@@ -71,6 +96,11 @@ export const projectService = {
    */
   async updateProject(id: string, project: UpdateProjectRequest): Promise<ProjectDetail> {
     const response = await api.put<ProjectDetail>(`/api/projects/${id}`, project);
+    
+    // Clear specific project cache and projects list cache
+    cache.remove(getCacheKey('project', id));
+    cache.clearByPrefix('projects');
+    
     return response.data;
   },
 
@@ -79,6 +109,11 @@ export const projectService = {
    */
   async deleteProject(id: string): Promise<void> {
     await api.delete(`/api/projects/${id}`);
+    
+    // Clear specific project cache and projects list cache
+    cache.remove(getCacheKey('project', id));
+    cache.clearByPrefix('projects');
+    cache.clearByPrefix(`versions:project:${id}`); // Clear related versions cache
   }
 };
 

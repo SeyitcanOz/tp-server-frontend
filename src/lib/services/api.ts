@@ -4,6 +4,7 @@ import { browser } from '$app/environment';
 import { goto } from '$app/navigation';
 import { get } from 'svelte/store';
 import { token } from '../stores/auth';
+import { cache } from '../stores/cache';
 
 // Default API configuration
 const API_URL = 'http://localhost:5220'; // Change this to match your TPServer API URL
@@ -43,6 +44,10 @@ if (browser) {
       if (error.response && error.response.status === 401) {
         // Clear token from store
         token.set(null);
+        
+        // Clear user-related caches
+        cache.remove('currentUser');
+        cache.clearByPrefix('user');
         
         // Redirect to login page
         goto('/login');

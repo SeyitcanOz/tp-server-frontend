@@ -3,6 +3,7 @@ import { token, user } from '../stores/auth';
 import type { LoginRequest, AuthResponse, User } from '../types/auth';
 import { browser } from '$app/environment';
 import userService from './user';
+import { cache } from '../stores/cache';
 
 /**
  * User authentication service
@@ -23,6 +24,13 @@ export const authService = {
       username: response.data.username,
       roles: response.data.roles
     });
+    
+    // Cache current user data
+    cache.set('currentUser', {
+      id: response.data.id,
+      username: response.data.username,
+      roles: response.data.roles
+    }, 600); // Cache for 10 minutes
     
     return response.data;
   },
@@ -50,6 +58,11 @@ export const authService = {
   logout(): void {
     token.set(null);
     user.set(null);
+    
+    // Clear user-related caches
+    cache.remove('currentUser');
+    // Consider if you want to clear all cache on logout
+    // cache.clear();
   },
   
   /**
@@ -71,6 +84,13 @@ export const authService = {
     // Only access localStorage in browser environment
     if (!browser) return false;
     
+    // Try to get from cache first
+    const cachedUser = cache.get<User>('currentUser');
+    if (cachedUser) {
+      return cachedUser.roles && cachedUser.roles.includes(role);
+    }
+    
+    // Fall back to localStorage
     const userData = localStorage.getItem('user');
     if (!userData) return false;
     
@@ -82,3 +102,5 @@ export const authService = {
     }
   }
 };
+
+export default authService;
