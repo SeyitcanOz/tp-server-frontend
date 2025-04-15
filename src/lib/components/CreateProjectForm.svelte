@@ -1,6 +1,8 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
+	import { createEventDispatcher, onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { fade, fly, scale } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing'; // Added missing import
 	import FileDropzone from './FileDropZone.svelte';
 	import api from '$lib/services/api';
 	import projectService from '$lib/services/project';
@@ -16,6 +18,7 @@
 	let error: string | null = null;
 	let success = false;
 	let createdProject: ProjectDetail | null = null;
+	let formElement: HTMLFormElement;
 
 	// File state
 	let projectFile: File | null = null;
@@ -23,6 +26,13 @@
 	let modelFile: File | null = null;
 	let modelInputFile: File | null = null;
 	let resultsFile: File | null = null;
+
+	// Transition duration for staggered file upload sections
+	const transitionDuration = 150;
+	const staggerDelay = 50;
+
+	// Track if the form is focused to prevent scroll propagation
+	let isFormFocused = false;
 
 	$: if (isOpen) {
 		// Always reset the form when opening, unless it's already submitting
@@ -52,6 +62,8 @@
 
 	// Prevent scrolling of the background when scrolling inside the modal
 	function handleWheel(event: WheelEvent) {
+		if (!isFormFocused) return;
+
 		// Only if we're at the top or bottom of the scrollable area
 		const target = event.currentTarget as HTMLElement;
 		const isAtTop = target.scrollTop === 0;
@@ -63,6 +75,15 @@
 
 		// Stop propagation to prevent background scrolling
 		event.stopPropagation();
+	}
+
+	// Handle focus and blur events for the form
+	function handleFormFocus() {
+		isFormFocused = true;
+	}
+
+	function handleFormBlur() {
+		isFormFocused = false;
 	}
 
 	// Form validation
@@ -210,22 +231,62 @@
 		// Close modal
 		handleClose();
 	}
+
+	// Handle dropzone interactions better
+	function handleFileSelected(event: CustomEvent<{ file: File | null }>, fileType: string) {
+		switch (fileType) {
+			case 'project':
+				projectFile = event.detail.file;
+				break;
+			case 'modelInfo':
+				modelInfoFile = event.detail.file;
+				break;
+			case 'model':
+				modelFile = event.detail.file;
+				break;
+			case 'modelInput':
+				modelInputFile = event.detail.file;
+				break;
+			case 'results':
+				resultsFile = event.detail.file;
+				break;
+		}
+	}
+
+	// Generate file upload section classes with staggered animations
+	function getFileUploadClass(index: number): string {
+		return `file-upload-section file-upload-section-${index}`;
+	}
+
+	onMount(() => {
+		if (formElement) {
+			formElement.addEventListener('focus', handleFormFocus, true);
+			formElement.addEventListener('blur', handleFormBlur, true);
+		}
+
+		return () => {
+			if (formElement) {
+				formElement.removeEventListener('focus', handleFormFocus, true);
+				formElement.removeEventListener('blur', handleFormBlur, true);
+			}
+		};
+	});
 </script>
 
 <svelte:window on:keydown={handleKeydown} />
 
 {#if isOpen}
-	<div class="overlay">
-		<div class="form-container">
+	<div class="overlay" transition:fade={{ duration: 200 }}>
+		<div class="form-container" in:fly={{ y: 20, duration: 300, easing: cubicOut }}>
 			<div class="form-card">
 				<!-- The header part that changes based on success status -->
 				{#if success && createdProject}
-					<div class="form-header success-header">
+					<div class="form-header success-header" in:fly={{ y: -10, duration: 300 }}>
 						<div class="header-icon">
 							<span class="material-icons">check_circle</span>
 						</div>
 						<div class="header-text">
-							<h1>Project Created</h1>
+							<h1>Project Created Successfully</h1>
 							<p class="header-subtitle">Your project has been successfully created</p>
 						</div>
 						<button
@@ -267,14 +328,14 @@
 
 				<div class="form-body" on:wheel={handleWheel}>
 					{#if error}
-						<div class="alert alert-error">
+						<div class="alert alert-error" in:fly={{ y: -5, duration: 200 }}>
 							<span class="material-icons">error_outline</span>
 							<span>{error}</span>
 						</div>
 					{/if}
 
 					{#if success && createdProject}
-						<div class="success-details">
+						<div class="success-details" in:scale={{ start: 0.98, duration: 300 }}>
 							<div class="detail-item">
 								<span class="label">Project Name:</span>
 								<span class="value">{createdProject.projectName}</span>
@@ -282,6 +343,13 @@
 							<div class="detail-item">
 								<span class="label">Modelling Type:</span>
 								<span class="value">{createdProject.modellingType}</span>
+							</div>
+
+							<div class="success-check" in:scale={{ delay: 300, duration: 400 }}>
+								<div class="check-circle">
+									<span class="material-icons">check</span>
+								</div>
+								<p>Project created successfully!</p>
 							</div>
 						</div>
 
@@ -310,8 +378,8 @@
 							</div>
 						</div>
 					{:else}
-						<form on:submit|preventDefault={handleSubmit}>
-							<div class="form-section">
+						<form on:submit|preventDefault={handleSubmit} bind:this={formElement}>
+							<div class="form-section" in:fly={{ y: 10, duration: 200 }}>
 								<h2>Project Details</h2>
 								<div class="form-row">
 									<div class="form-group required-field">
@@ -359,64 +427,94 @@
 							</div>
 
 							<!-- Project Files -->
-							<div class="form-section">
+							<div class="form-section" in:fly={{ y: 10, duration: 200, delay: 100 }}>
 								<h2>Project Files</h2>
 
 								<div class="dropzones-container">
-									<FileDropzone
-										fileType="Project File"
-										acceptedExtensions=".json"
-										description="Main project data file (Project.json)"
-										bind:selectedFile={projectFile}
-										required={true}
-										backgroundColor="#EBF5FF"
-										color="#3b82f6"
-										disabled={isSubmitting}
-									/>
+									<div
+										class={getFileUploadClass(1)}
+										in:fade={{ duration: transitionDuration, delay: staggerDelay * 0 }}
+									>
+										<FileDropzone
+											fileType="Project File"
+											acceptedExtensions=".json"
+											description="Main project data file (Project.json)"
+											bind:selectedFile={projectFile}
+											required={true}
+											backgroundColor="#EBF5FF"
+											color="#3b82f6"
+											disabled={isSubmitting}
+											on:fileSelected={(e) => handleFileSelected(e, 'project')}
+										/>
+									</div>
 
-									<FileDropzone
-										fileType="Model Info File"
-										acceptedExtensions=".json"
-										description="Additional model information (TBDYModelInfo.json)"
-										bind:selectedFile={modelInfoFile}
-										backgroundColor="#f1f5f9"
-										color="#64748b"
-										disabled={isSubmitting}
-									/>
+									<div
+										class={getFileUploadClass(2)}
+										in:fade={{ duration: transitionDuration, delay: staggerDelay * 1 }}
+									>
+										<FileDropzone
+											fileType="Model Info File"
+											acceptedExtensions=".json"
+											description="Additional model information (TBDYModelInfo.json)"
+											bind:selectedFile={modelInfoFile}
+											backgroundColor="#f1f5f9"
+											color="#64748b"
+											disabled={isSubmitting}
+											on:fileSelected={(e) => handleFileSelected(e, 'modelInfo')}
+										/>
+									</div>
 
-									<FileDropzone
-										fileType="Model File"
-										acceptedExtensions=".model,.json"
-										description="Model file (TBDYModelInputParameters.model)"
-										bind:selectedFile={modelFile}
-										backgroundColor="#f1f5f9"
-										color="#64748b"
-										disabled={isSubmitting}
-									/>
+									<div
+										class={getFileUploadClass(3)}
+										in:fade={{ duration: transitionDuration, delay: staggerDelay * 2 }}
+									>
+										<FileDropzone
+											fileType="Model File"
+											acceptedExtensions=".model,.json"
+											description="Model file (TBDYModelInputParameters.model)"
+											bind:selectedFile={modelFile}
+											backgroundColor="#f1f5f9"
+											color="#64748b"
+											disabled={isSubmitting}
+											on:fileSelected={(e) => handleFileSelected(e, 'model')}
+										/>
+									</div>
 
-									<FileDropzone
-										fileType="Model Input File"
-										acceptedExtensions=".txt"
-										description="Model input parameters (TBDYModelInputParameters.txt)"
-										bind:selectedFile={modelInputFile}
-										backgroundColor="#f1f5f9"
-										color="#64748b"
-										disabled={isSubmitting}
-									/>
+									<div
+										class={getFileUploadClass(4)}
+										in:fade={{ duration: transitionDuration, delay: staggerDelay * 3 }}
+									>
+										<FileDropzone
+											fileType="Model Input File"
+											acceptedExtensions=".txt"
+											description="Model input parameters (TBDYModelInputParameters.txt)"
+											bind:selectedFile={modelInputFile}
+											backgroundColor="#f1f5f9"
+											color="#64748b"
+											disabled={isSubmitting}
+											on:fileSelected={(e) => handleFileSelected(e, 'modelInput')}
+										/>
+									</div>
 
-									<FileDropzone
-										fileType="Results File"
-										acceptedExtensions=".txt"
-										description="Results data file (Sonuc_Deterministic_Pe.txt)"
-										bind:selectedFile={resultsFile}
-										backgroundColor="#f1f5f9"
-										color="#64748b"
-										disabled={isSubmitting}
-									/>
+									<div
+										class={getFileUploadClass(5)}
+										in:fade={{ duration: transitionDuration, delay: staggerDelay * 4 }}
+									>
+										<FileDropzone
+											fileType="Results File"
+											acceptedExtensions=".txt"
+											description="Results data file (Sonuc_Deterministic_Pe.txt)"
+											bind:selectedFile={resultsFile}
+											backgroundColor="#f1f5f9"
+											color="#64748b"
+											disabled={isSubmitting}
+											on:fileSelected={(e) => handleFileSelected(e, 'results')}
+										/>
+									</div>
 								</div>
 							</div>
 
-							<div class="form-actions">
+							<div class="form-actions" in:fade={{ duration: 200, delay: 300 }}>
 								<button
 									type="button"
 									class="btn-secondary"
@@ -490,24 +588,12 @@
 	.form-card {
 		background-color: white;
 		border-radius: 10px;
-		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+		box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
 		width: 100%;
 		max-height: 90vh;
 		display: flex;
 		flex-direction: column;
-		animation: card-in 0.25s ease-out;
 		overflow: hidden;
-	}
-
-	@keyframes card-in {
-		from {
-			opacity: 0;
-			transform: translateY(-15px);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
 	}
 
 	/* Header Styles */
@@ -613,21 +699,21 @@
 
 	/* Success Styles - More Minimalistic */
 	.success-details {
-		padding: 1rem;
+		padding: 1.25rem;
 		background-color: #f8fafc;
-		border-radius: 6px;
+		border-radius: 8px;
 		margin-bottom: 1.5rem;
 		border: 1px solid #e2e8f0;
 	}
 
 	.detail-item {
 		display: flex;
-		margin-bottom: 0.5rem;
+		margin-bottom: 0.75rem;
 		font-size: 0.85rem;
 	}
 
-	.detail-item:last-child {
-		margin-bottom: 0;
+	.detail-item:last-of-type {
+		margin-bottom: 1.5rem;
 	}
 
 	.label {
@@ -638,6 +724,54 @@
 
 	.value {
 		color: #1e293b;
+		font-weight: 500;
+	}
+
+	/* Success Check Animation */
+	.success-check {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 1.5rem 0 0.5rem;
+		text-align: center;
+	}
+
+	.check-circle {
+		width: 56px;
+		height: 56px;
+		border-radius: 50%;
+		background-color: #10b981;
+		color: white;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin-bottom: 1rem;
+		box-shadow: 0 0 0 8px rgba(16, 185, 129, 0.2);
+		animation: pulse-success 2s infinite;
+	}
+
+	.check-circle .material-icons {
+		font-size: 1.5rem;
+	}
+
+	.success-check p {
+		font-size: 0.9rem;
+		color: #10b981;
+		font-weight: 500;
+		margin: 0;
+	}
+
+	@keyframes pulse-success {
+		0% {
+			box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+		}
+		70% {
+			box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+		}
+		100% {
+			box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+		}
 	}
 
 	/* Form Sections */
@@ -733,7 +867,15 @@
 	.dropzones-container {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+	}
+
+	.file-upload-section {
+		margin-bottom: 0.5rem;
+		transition: all 0.3s ease;
+	}
+
+	.file-upload-section:hover {
+		transform: translateY(-2px);
 	}
 
 	/* Toggle Button Styles */
@@ -822,6 +964,12 @@
 
 	.btn-primary:hover:not(:disabled) {
 		background-color: #2563eb;
+		transform: translateY(-1px);
+		box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+	}
+
+	.btn-primary:active:not(:disabled) {
+		transform: translateY(0);
 	}
 
 	.btn-secondary {
@@ -832,6 +980,11 @@
 
 	.btn-secondary:hover:not(:disabled) {
 		background-color: #e2e8f0;
+		transform: translateY(-1px);
+	}
+
+	.btn-secondary:active:not(:disabled) {
+		transform: translateY(0);
 	}
 
 	.btn-outline {
@@ -842,6 +995,11 @@
 
 	.btn-outline:hover:not(:disabled) {
 		background-color: #f0f7ff;
+		transform: translateY(-1px);
+	}
+
+	.btn-outline:active:not(:disabled) {
+		transform: translateY(0);
 	}
 
 	.btn-success {
@@ -852,6 +1010,12 @@
 
 	.btn-success:hover:not(:disabled) {
 		background-color: #059669;
+		transform: translateY(-1px);
+		box-shadow: 0 2px 4px rgba(5, 150, 105, 0.2);
+	}
+
+	.btn-success:active:not(:disabled) {
+		transform: translateY(0);
 	}
 
 	.btn-primary:disabled,
