@@ -26,9 +26,14 @@ export const downloadService = {
       let filename = 'project.zip';
       
       if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+        // Try multiple regex patterns to match different server formats
+        let filenameMatch = contentDisposition.match(/filename="(.+?)"/i);
+        if (!filenameMatch) {
+          filenameMatch = contentDisposition.match(/filename=([^;]+)/i);
+        }
+        
         if (filenameMatch && filenameMatch[1]) {
-          filename = filenameMatch[1];
+          filename = filenameMatch[1].replace(/["']/g, '');
         }
       }
       
@@ -42,7 +47,7 @@ export const downloadService = {
       
       // Clean up the URL object
       URL.revokeObjectURL(url);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error downloading project zip:', error);
       throw error;
     }
@@ -67,9 +72,14 @@ export const downloadService = {
       let filename = 'model.json';
       
       if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+        // Try multiple regex patterns to match different server formats
+        let filenameMatch = contentDisposition.match(/filename="(.+?)"/i);
+        if (!filenameMatch) {
+          filenameMatch = contentDisposition.match(/filename=([^;]+)/i);
+        }
+        
         if (filenameMatch && filenameMatch[1]) {
-          filename = filenameMatch[1];
+          filename = filenameMatch[1].replace(/["']/g, '');
         }
       }
       
@@ -81,7 +91,7 @@ export const downloadService = {
       document.body.removeChild(link);
       
       URL.revokeObjectURL(url);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error downloading dot model:', error);
       throw error;
     }
@@ -106,9 +116,14 @@ export const downloadService = {
       let filename = 'results.csv';
       
       if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+        // Try multiple regex patterns to match different server formats
+        let filenameMatch = contentDisposition.match(/filename="(.+?)"/i);
+        if (!filenameMatch) {
+          filenameMatch = contentDisposition.match(/filename=([^;]+)/i);
+        }
+        
         if (filenameMatch && filenameMatch[1]) {
-          filename = filenameMatch[1];
+          filename = filenameMatch[1].replace(/["']/g, '');
         }
       }
       
@@ -120,7 +135,7 @@ export const downloadService = {
       document.body.removeChild(link);
       
       URL.revokeObjectURL(url);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error downloading results CSV:', error);
       throw error;
     }
@@ -142,9 +157,14 @@ export const downloadService = {
       let filename = 'all_projects_results.csv';
       
       if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+        // Try multiple regex patterns to match different server formats
+        let filenameMatch = contentDisposition.match(/filename="(.+?)"/i);
+        if (!filenameMatch) {
+          filenameMatch = contentDisposition.match(/filename=([^;]+)/i);
+        }
+        
         if (filenameMatch && filenameMatch[1]) {
-          filename = filenameMatch[1];
+          filename = filenameMatch[1].replace(/["']/g, '');
         }
       }
       
@@ -156,7 +176,7 @@ export const downloadService = {
       document.body.removeChild(link);
       
       URL.revokeObjectURL(url);
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Error downloading all projects results CSV:', error);
       throw error;
     }
