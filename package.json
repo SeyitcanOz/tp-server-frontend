@@ -34,9 +34,12 @@
 		"vite": "^6.2.5"
 	},
 	"dependencies": {
+		"@types/three": "^0.175.0",
 		"axios": "^1.8.4",
+		"earcut": "^3.0.1",
 		"jwt-decode": "^4.0.0",
 		"svelte-toast": "^1.0.0",
+		"three": "^0.175.0",
 		"zod": "^3.24.2"
 	}
 }
