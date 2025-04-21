@@ -27,7 +27,7 @@
 	let zIndexLayers = {
 		grid: 0,
 		axes: 5,
-		slab: 10,
+		slab: 15,
 		wall: 20,
 		beam: 30,
 		column: 40
