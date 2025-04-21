@@ -117,7 +117,16 @@
 	// Created a copy of the materials for the current rendering
 	let materials = { ...defaultMaterials };
 
-	function updateMaterialColors() {
+	export function updateMaterialColors(newStoryColors?: Record<string, string>) {
+		// Allow calling with or without parameters for backward compatibility
+		if (newStoryColors) {
+			console.log('updateMaterialColors called with:', newStoryColors);
+			// Update the component's storyColors with the new values
+			storyColors = newStoryColors;
+		} else {
+			console.log('updateMaterialColors called without parameters, using current storyColors');
+		}
+
 		// Define the explicit type for materials
 		materials = {
 			column: defaultMaterials.column.clone(),
@@ -135,47 +144,95 @@
 			return;
 		}
 
+		// Debug: Show all story names we're looking for
+		console.log('Looking for these story names in the model:', Object.keys(storyColors));
+
+		// Keep track of whether we found and updated any materials
+		let updatedAnyMaterials = false;
+
 		// Update materials in the scene if they exist
 		if (scene) {
-			scene.traverse((object) => {
-				if (object instanceof THREE.Mesh) {
-					// Extract story name from object names like "Story_0", "Story_1", etc.
-					const storyMatch = object.name.match(/^Story_(\d+)$/);
-					if (storyMatch) {
-						const storyIndex = parseInt(storyMatch[1]);
-						// Map story index to story name in the building model
-						let storyName = '';
+			// First, log all top-level objects in the scene to debug
+			console.log(
+				'Top-level scene objects:',
+				scene.children.map((child) => child.name)
+			);
 
-						if (storyIndex === 0) {
-							storyName = 'Bodrum';
-							console.log(storyName);
-						} else {
-							storyName = `Kat ${storyIndex}`;
-						}
+			// Find all story groups first, as they're at the top level of the scene
+			const storyGroups = scene.children.filter((obj) => obj.name && obj.name.startsWith('Story_'));
+			console.log(`Found ${storyGroups.length} story groups in the scene`);
 
-						// If we have a color for this story, apply it
-						if (storyColors[storyName]) {
-							// Apply to all objects in this story group
-							object.traverse((child) => {
-								if (child instanceof THREE.Mesh) {
-									// Create a colored material based on the original
-									if (child.material) {
-										// Clone the material to avoid affecting other objects
-										const originalMaterial = child.material;
-										const newMaterial = originalMaterial.clone();
-										newMaterial.color.set(storyColors[storyName]);
-										// Keep the original opacity and other properties
-										if ('opacity' in newMaterial) {
-											newMaterial.opacity = originalMaterial.opacity;
-										}
-										child.material = newMaterial;
-									}
+			// Log the names of all the story groups found
+			console.log(
+				'Story groups:',
+				storyGroups.map((group) => group.name)
+			);
+
+			// For each story group, update all its children's materials based on the story color
+			storyGroups.forEach((storyGroup) => {
+				// Extract the story name from the group name (e.g., "Story_0" -> "Bodrum", "Story_1" -> "Kat 1")
+				const storyMatch = storyGroup.name.match(/^Story_(\d+)$/);
+				if (storyMatch) {
+					const storyIndex = parseInt(storyMatch[1]);
+					// Map story index to story name in the building model
+					let storyName = '';
+
+					if (storyIndex === 0) {
+						storyName = 'Bodrum';
+					} else {
+						storyName = `Kat ${storyIndex}`;
+					}
+
+					console.log(`Processing story group: ${storyGroup.name} maps to ${storyName}`);
+
+					// If we have a color for this story, apply it to all children
+					if (storyColors[storyName]) {
+						console.log(`Applying color ${storyColors[storyName]} to all objects in ${storyName}`);
+						updatedAnyMaterials = true;
+
+						// Keep track of how many objects were updated
+						let updatedCount = 0;
+
+						// Apply color to all meshes in this story group
+						storyGroup.traverse((child) => {
+							if (child instanceof THREE.Mesh && child.material) {
+								// Clone the material to avoid affecting other objects
+								const originalMaterial = child.material;
+								const newMaterial = originalMaterial.clone();
+
+								// Set the new color from storyColors
+								newMaterial.color.set(storyColors[storyName]);
+
+								// Keep the original opacity and other properties
+								if ('opacity' in originalMaterial) {
+									newMaterial.opacity = originalMaterial.opacity;
 								}
-							});
-						}
+								if ('transparent' in originalMaterial) {
+									newMaterial.transparent = originalMaterial.transparent;
+								}
+
+								// Apply the new material
+								child.material = newMaterial;
+
+								// Mark material as needing update
+								newMaterial.needsUpdate = true;
+
+								updatedCount++;
+							}
+						});
+
+						console.log(`Updated ${updatedCount} materials in ${storyName}`);
+					} else {
+						console.log(`No color specified for ${storyName}, skipping`);
 					}
 				}
 			});
+		}
+
+		// Force a re-render if we updated materials
+		if (updatedAnyMaterials && renderer && camera) {
+			console.log('Forcing re-render after material updates');
+			renderer.render(scene, camera);
 		}
 	}
 

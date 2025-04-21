@@ -189,13 +189,21 @@
 
 	// When storyColors change, ensure the viewer rerenders with the new colors
 	$: if (buildingViewerComponent && Object.keys(storyColors).length > 0) {
-		console.log('Applying story colors to 3D model');
-		// Force a rerender of the model with new colors
-		setTimeout(() => {
-			if (buildingViewerComponent.updateMaterialColors) {
-				buildingViewerComponent.updateMaterialColors(storyColors);
-			}
-		}, 100);
+		console.log('Applying story colors to 3D model:', storyColors);
+		// Force a rerender of the model with new colors immediately and also with a small delay
+		// to ensure it happens after any other pending updates
+		if (buildingViewerComponent.updateMaterialColors) {
+			// Try immediately
+			buildingViewerComponent.updateMaterialColors(storyColors);
+
+			// And also with a delay to be sure
+			setTimeout(() => {
+				if (buildingViewerComponent && buildingViewerComponent.updateMaterialColors) {
+					console.log('Retrying color update with delay');
+					buildingViewerComponent.updateMaterialColors(storyColors);
+				}
+			}, 300);
+		}
 	}
 
 	onMount(() => {
