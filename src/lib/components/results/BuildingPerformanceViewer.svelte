@@ -5,7 +5,7 @@
 	import ResultsFilter from './ResultsFilter.svelte';
 	import StoryPerformanceSummary from './StoreyPerformanceSummary.svelte';
 	import type { ProjectVersion } from '$lib/types/version';
-	import type { FilterCriteria, StoryPerformance } from '$lib/types/FilterTypes';
+	import type { FilterCriteria, StoryPerformance, ResultRow } from '$lib/types/FilterTypes';
 	import {
 		filterResultsData,
 		getStoryPerformanceStatus,
@@ -20,8 +20,8 @@
 
 	// Component state
 	let modelData: any = null;
-	let resultsData: any[] = [];
-	let filteredResults: any[] = [];
+	let resultsData: ResultRow[] = [];
+	let filteredResults: ResultRow[] = [];
 	let storyColors: Record<string, string> = {};
 	let storyPerformance: StoryPerformance[] = [];
 	let modelError: string | null = null;
@@ -58,8 +58,8 @@
 			}
 
 			// Extract results data
-			if (version.resultsData && Array.isArray(version.resultsData.rows)) {
-				resultsData = version.resultsData.rows;
+			if (version.resultsData && version.resultsData.rows) {
+				resultsData = version.resultsData.rows as ResultRow[];
 				console.log(`Loaded ${resultsData.length} result rows`);
 			} else {
 				console.warn('No results data found');
@@ -86,20 +86,27 @@
 
 	// Update filtered results based on current filters
 	function updateFilteredResults(): void {
+		console.log('Updating filtered results with filters:', filters);
+
 		if (resultsData.length === 0) {
 			filteredResults = [];
+			storyPerformance = [];
+			storyColors = {};
 			return;
 		}
 
 		// Apply the filters
 		filteredResults = filterResultsData(resultsData, filters);
+		console.log(`Filtered results: ${filteredResults.length} rows`);
 
 		// Update story performance if performance criterion is selected
 		if (filters.performance) {
 			storyPerformance = getStoryPerformanceStatus(filteredResults, filters.performance);
+			console.log('Story performance status:', storyPerformance);
 
 			// Update story colors for visualization
 			storyColors = getStoryColors(storyPerformance);
+			console.log('Story colors:', storyColors);
 		} else {
 			storyPerformance = [];
 			storyColors = {};
@@ -130,6 +137,16 @@
 	// Toggle between original model and performance view
 	function togglePerformanceView() {
 		showPerformanceView = !showPerformanceView;
+
+		// Reset filters when switching back to original view
+		if (!showPerformanceView) {
+			filters = {
+				earthquake: null,
+				performance: null,
+				direction: null
+			};
+			storyColors = {};
+		}
 	}
 
 	// Toggle expand/collapse
@@ -170,6 +187,17 @@
 		processVersionData();
 	}
 
+	// When storyColors change, ensure the viewer rerenders with the new colors
+	$: if (buildingViewerComponent && Object.keys(storyColors).length > 0) {
+		console.log('Applying story colors to 3D model');
+		// Force a rerender of the model with new colors
+		setTimeout(() => {
+			if (buildingViewerComponent.updateMaterialColors) {
+				buildingViewerComponent.updateMaterialColors(storyColors);
+			}
+		}, 100);
+	}
+
 	onMount(() => {
 		if (version) {
 			processVersionData();
@@ -191,15 +219,13 @@
 					class="view-toggle-button"
 					class:active={showPerformanceView}
 					on:click={togglePerformanceView}
-					title={showPerformanceView
-						? 'Orijinal Bina Görünümü'
-						: 'Performans Değerlendirme Görünümü'}
+					title={showPerformanceView ? 'Original Building View' : 'Performance Building View'}
 				>
 					<span class="material-icons">
 						{showPerformanceView ? 'visibility' : 'assessment'}
 					</span>
 					<span class="toggle-text">
-						{showPerformanceView ? 'Orijinal Görünüm' : 'Performans Görünümü'}
+						{showPerformanceView ? 'Original View' : 'Performance View'}
 					</span>
 				</button>
 			{/if}
@@ -220,7 +246,11 @@
 			{#if showPerformanceView && resultsData.length > 0}
 				<!-- Performance View with Filters -->
 				<div class="performance-view">
-					<ResultsFilter on:filterChange={handleFilterChange} />
+					<ResultsFilter on:filterChange={handleFilterChange} bind:filters />
+
+					{#if isFilterSelectionComplete(filters)}
+						<StoryPerformanceSummary {storyPerformance} performanceType={filters.performance} />
+					{/if}
 
 					{#if isLoadingModel}
 						<div class="loading-container">
@@ -359,6 +389,7 @@
 		font-size: 0.75rem;
 		cursor: pointer;
 		transition: all 0.15s ease;
+		height: 24px;
 	}
 
 	.view-toggle-button:hover {
