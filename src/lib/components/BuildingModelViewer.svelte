@@ -12,6 +12,7 @@
 	export let width: string = '100%';
 	export let height: string = '500px';
 	export let axisExtensionLength: number = 200; // Extension length for axis lines
+	export let storyColors: Record<string, string> = {};
 
 	// Component state
 	let container: HTMLElement;
@@ -34,7 +35,7 @@
 	};
 
 	// Materials for different structural elements with improved quality and z-fighting prevention
-	const materials = {
+	const defaultMaterials = {
 		column: new THREE.MeshPhongMaterial({
 			color: 0x5472d3, // Steel blue for columns - more professional
 			transparent: false, // Columns remain opaque
@@ -113,6 +114,71 @@
 		})
 	};
 
+	// Created a copy of the materials for the current rendering
+	let materials = { ...defaultMaterials };
+
+	function updateMaterialColors() {
+		// Define the explicit type for materials
+		materials = {
+			column: defaultMaterials.column.clone(),
+			beam: defaultMaterials.beam.clone(),
+			slab: defaultMaterials.slab.clone(),
+			wall: defaultMaterials.wall.clone(),
+			wallBeam: defaultMaterials.wallBeam.clone(),
+			wallColumn: defaultMaterials.wallColumn.clone(),
+			axisLine: defaultMaterials.axisLine.clone(),
+			axisText: defaultMaterials.axisText.clone()
+		};
+
+		// If no story colors are provided, use default materials
+		if (Object.keys(storyColors).length === 0) {
+			return;
+		}
+
+		// Update materials in the scene if they exist
+		if (scene) {
+			scene.traverse((object) => {
+				if (object instanceof THREE.Mesh) {
+					// Extract story name from object names like "Story_0", "Story_1", etc.
+					const storyMatch = object.name.match(/^Story_(\d+)$/);
+					if (storyMatch) {
+						const storyIndex = parseInt(storyMatch[1]);
+						// Map story index to story name in the building model
+						let storyName = '';
+
+						if (storyIndex === 0) {
+							storyName = 'Bodrum';
+							console.log(storyName);
+						} else {
+							storyName = `Kat ${storyIndex}`;
+						}
+
+						// If we have a color for this story, apply it
+						if (storyColors[storyName]) {
+							// Apply to all objects in this story group
+							object.traverse((child) => {
+								if (child instanceof THREE.Mesh) {
+									// Create a colored material based on the original
+									if (child.material) {
+										// Clone the material to avoid affecting other objects
+										const originalMaterial = child.material;
+										const newMaterial = originalMaterial.clone();
+										newMaterial.color.set(storyColors[storyName]);
+										// Keep the original opacity and other properties
+										if ('opacity' in newMaterial) {
+											newMaterial.opacity = originalMaterial.opacity;
+										}
+										child.material = newMaterial;
+									}
+								}
+							});
+						}
+					}
+				}
+			});
+		}
+	}
+
 	// Initialize the 3D scene
 	function initScene() {
 		if (!container) return;
@@ -188,6 +254,7 @@
 
 		isInitialized = true;
 		animate();
+		updateMaterialColors();
 	}
 
 	// Animation loop
@@ -398,6 +465,10 @@
 		scene.add(axesGroup);
 	}
 
+	$: if (isInitialized && scene && Object.keys(storyColors).length > 0) {
+		updateMaterialColors();
+	}
+
 	// Create a label for an axis
 	function createAxisLabel(text: string, x: number, y: number, z: number) {
 		if (!scene) return;
@@ -484,6 +555,8 @@
 		} catch (error) {
 			console.error('Error rendering building model:', error);
 		}
+
+		updateMaterialColors();
 	}
 
 	// Clear existing models from the scene

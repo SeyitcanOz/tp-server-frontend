@@ -3,10 +3,11 @@
 	import { slide } from 'svelte/transition';
 	import { page } from '$app/stores';
 	import { user } from '$lib/stores/auth';
+	import userService from '$lib/services/user';
 	import projectService from '$lib/services/project';
 	import versionService from '$lib/services/version';
 	import downloadService from '$lib/services/download';
-	import ModelViewer from '$lib/components/ModelViewer.svelte';
+	import BuildingPerformanceViewer from '$lib/components/results/BuildingPerformanceViewer.svelte';
 	import type { ProjectDetail } from '$lib/types/project';
 	import type { ProjectVersion } from '$lib/types/version';
 
@@ -424,7 +425,7 @@
 		</div>
 
 		<!-- 3D Model Viewer Section -->
-		<ModelViewer {version} height="600px" />
+		<BuildingPerformanceViewer {version} height="600px" />
 
 		<!-- Results Section -->
 		<div class="results-section">
