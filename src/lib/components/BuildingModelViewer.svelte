@@ -1,3 +1,4 @@
+<!-- src/lib/components/BuildingModelViewer.svelte -->
 <script lang="ts">
 	// @ts-ignore
 	// For polygon triangulation - we'll use Earcut as it's reliable for complex polygons
@@ -33,6 +34,9 @@
 		beam: 30,
 		column: 40
 	};
+
+	// Store the story name mapping (index to actual name)
+	let storyNameMapping: Record<string, string> = {};
 
 	// Materials for different structural elements with improved quality and z-fighting prevention
 	const defaultMaterials = {
@@ -168,25 +172,23 @@
 				storyGroups.map((group) => group.name)
 			);
 
+			// Log the story name mapping we have built
+			console.log('Story name mapping:', storyNameMapping);
+
 			// For each story group, update all its children's materials based on the story color
 			storyGroups.forEach((storyGroup) => {
-				// Extract the story name from the group name (e.g., "Story_0" -> "Bodrum", "Story_1" -> "Kat 1")
+				// Extract the story index from the group name (e.g., "Story_0")
 				const storyMatch = storyGroup.name.match(/^Story_(\d+)$/);
 				if (storyMatch) {
 					const storyIndex = parseInt(storyMatch[1]);
-					// Map story index to story name in the building model
-					let storyName = '';
 
-					if (storyIndex === 0) {
-						storyName = 'Bodrum';
-					} else {
-						storyName = `Kat ${storyIndex}`;
-					}
+					// Get the actual story name from our mapping
+					const storyName = storyNameMapping[`Story_${storyIndex}`] || '';
 
 					console.log(`Processing story group: ${storyGroup.name} maps to ${storyName}`);
 
 					// If we have a color for this story, apply it to all children
-					if (storyColors[storyName]) {
+					if (storyName && storyColors[storyName]) {
 						console.log(`Applying color ${storyColors[storyName]} to all objects in ${storyName}`);
 						updatedAnyMaterials = true;
 
@@ -397,6 +399,7 @@
 		Beams?: Beam[];
 		Slabs?: Slab[];
 		Walls?: Wall[];
+		Label?: string; // The story label (name)
 	}
 
 	// Draw building axes with labels in bubbles
@@ -602,6 +605,30 @@
 			// Extract data
 			const stories = modelData.Stories;
 
+			// Clear the story name mapping before rebuilding it
+			storyNameMapping = {};
+
+			// Build the story name mapping
+			stories.forEach((story: Story, storyIndex: number) => {
+				// Get the story name from the Label property if available
+				let storyName = '';
+				if (story.Label) {
+					storyName = story.Label;
+				} else {
+					// Fallback to old naming convention if no Label is present
+					if (storyIndex === 0) {
+						storyName = 'Bodrum';
+					} else {
+						storyName = `Kat ${storyIndex}`;
+					}
+				}
+
+				// Store the mapping from Story_index to actual story name
+				storyNameMapping[`Story_${storyIndex}`] = storyName;
+
+				console.log(`Mapping Story_${storyIndex} to "${storyName}"`);
+			});
+
 			// Render the building structure
 			stories.forEach((story: Story, storyIndex: number) => {
 				renderStory(story, storyIndex, stories.length);
@@ -747,7 +774,6 @@
 		const width = parseFloat(B1 as string) || 30;
 		const depth = parseFloat(B2 as string) || width;
 		const height = parseFloat(storyHeight as string);
-
 		// Create column geometry
 		const geometry = new THREE.BoxGeometry(width, height, depth, 2, 4, 2);
 		const mesh = new THREE.Mesh(geometry, materials.column);
