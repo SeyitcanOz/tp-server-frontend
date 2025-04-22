@@ -108,7 +108,11 @@
 
 		// Update story performance if performance criterion is selected
 		if (filters.performance) {
-			storyPerformance = getStoryPerformanceStatus(filteredResults, filters.performance);
+			storyPerformance = getStoryPerformanceStatus(
+				filteredResults,
+				filters.performance,
+				filters.direction
+			);
 			console.log('Story performance status:', storyPerformance);
 
 			// Update story colors for visualization

@@ -83,43 +83,34 @@ export function getStoryPerformanceStatus(
     
     const failsPerformance = storyRows.some((row) => row[performanceColumnName] === 'Sağlamıyor');
     
-    // Get the max values for this story
-    let maxDrift = 0;
-    let avgDrift = 0;
-    let maxNN0 = 0;
-    let avgNN0 = 0;
+    // For story details, we should get values specific to this story
+    let maxXDrift: number | undefined;
+    let avgXDrift: number | undefined;
+    let maxYDrift: number | undefined;
+    let avgYDrift: number | undefined;
+    let maxNN0: number | undefined;
+    let avgNN0: number | undefined;
     
-    storyRows.forEach((row) => {
-      if (direction === 'X') {
-        if (row.Bina_max_x_drift !== undefined && row.Bina_max_x_drift > maxDrift) {
-          maxDrift = row.Bina_max_x_drift;
-        }
-        if (row.Bina_avg_x_drift !== undefined && row.Bina_avg_x_drift > avgDrift) {
-          avgDrift = row.Bina_avg_x_drift;
-        }
-      } else if (direction === 'Y') {
-        if (row.Bina_max_y_drift !== undefined && row.Bina_max_y_drift > maxDrift) {
-          maxDrift = row.Bina_max_y_drift;
-        }
-        if (row.Bina_avg_y_drift !== undefined && row.Bina_avg_y_drift > avgDrift) {
-          avgDrift = row.Bina_avg_y_drift;
-        }
-      }
+    if (storyRows.length > 0) {
+      // Since all drift values exist regardless of direction, take them from the first row
+      const storyRow = storyRows[0];
       
-      if (row.Bina_max_n_n0 !== undefined && row.Bina_max_n_n0 > maxNN0) {
-        maxNN0 = row.Bina_max_n_n0;
-      }
-      if (row.Bina_avg_n_n0 !== undefined && row.Bina_avg_n_n0 > avgNN0) {
-        avgNN0 = row.Bina_avg_n_n0;
-      }
-    });
+      maxXDrift = storyRow.Bina_max_x_drift;
+      avgXDrift = storyRow.Bina_avg_x_drift;
+      maxYDrift = storyRow.Bina_max_y_drift;
+      avgYDrift = storyRow.Bina_avg_y_drift;
+      maxNN0 = storyRow.Bina_max_n_n0;
+      avgNN0 = storyRow.Bina_avg_n_n0;
+    }
     
     return {
       story,
       performanceStatus: failsPerformance ? 'Sağlamıyor' : 'Sağlıyor',
       isCurrentVersion: false, // This will be set by the consumer based on the current version
-      maxDrift,
-      avgDrift,
+      maxXDrift,
+      avgXDrift,
+      maxYDrift,
+      avgYDrift,
       maxNN0,
       avgNN0
     };

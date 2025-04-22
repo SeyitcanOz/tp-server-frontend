@@ -7,8 +7,10 @@
 	export let performanceType: 'SH' | 'KH' | 'GO' | null = null;
 	export let direction: 'X' | 'Y' | null = null;
 	export let summarizedData: {
-		maxDrift: number;
-		avgDrift: number;
+		maxXDrift: number;
+		avgXDrift: number;
+		maxYDrift: number;
+		avgYDrift: number;
 		maxNN0: number;
 		avgNN0: number;
 	} | null = null;
@@ -72,6 +74,9 @@
 	// Sort stories for display
 	$: sortedStories = sortStories(storyPerformance);
 
+	// Check if any story has detail data
+	$: hasAnyDetailData = storyPerformance.some((story) => hasDetailData(story));
+
 	// Format the number to fixed decimal places
 	function formatNumber(value: number | null | undefined): string {
 		if (value === null || value === undefined) return '-';
@@ -86,10 +91,12 @@
 	}
 
 	// Check if a story has any detail data
-	function hasDetailData(story: any): boolean {
+	function hasDetailData(story: StoryPerformance): boolean {
 		return (
-			story.maxDrift !== undefined ||
-			story.avgDrift !== undefined ||
+			story.maxXDrift !== undefined ||
+			story.avgXDrift !== undefined ||
+			story.maxYDrift !== undefined ||
+			story.avgYDrift !== undefined ||
 			story.maxNN0 !== undefined ||
 			story.avgNN0 !== undefined
 		);
@@ -110,14 +117,16 @@
 				</div>
 			</div>
 
-			<button class="view-toggle-btn" on:click={toggleDetailedView}>
-				<span class="material-icons">
-					{showDetailedView ? 'view_list' : 'analytics'}
-				</span>
-				<span class="toggle-text">
-					{showDetailedView ? 'Basit Görünüm' : 'Detaylı Görünüm'}
-				</span>
-			</button>
+			{#if hasAnyDetailData}
+				<button class="view-toggle-btn" on:click={toggleDetailedView}>
+					<span class="material-icons">
+						{showDetailedView ? 'view_list' : 'analytics'}
+					</span>
+					<span class="toggle-text">
+						{showDetailedView ? 'Basit Görünüm' : 'Detaylı Görünüm'}
+					</span>
+				</button>
+			{/if}
 		</div>
 	</div>
 
@@ -131,12 +140,20 @@
 			<div class="data-summary">
 				<div class="data-grid">
 					<div class="data-item">
-						<div class="data-label">Maks. Göreli Kat Ötelemesi ({direction})</div>
-						<div class="data-value">{formatNumber(summarizedData.maxDrift)}</div>
+						<div class="data-label">Maks. Göreli Kat Ötelemesi (X)</div>
+						<div class="data-value">{formatNumber(summarizedData.maxXDrift)}</div>
 					</div>
 					<div class="data-item">
-						<div class="data-label">Ort. Göreli Kat Ötelemesi ({direction})</div>
-						<div class="data-value">{formatNumber(summarizedData.avgDrift)}</div>
+						<div class="data-label">Ort. Göreli Kat Ötelemesi (X)</div>
+						<div class="data-value">{formatNumber(summarizedData.avgXDrift)}</div>
+					</div>
+					<div class="data-item">
+						<div class="data-label">Maks. Göreli Kat Ötelemesi (Y)</div>
+						<div class="data-value">{formatNumber(summarizedData.maxYDrift)}</div>
+					</div>
+					<div class="data-item">
+						<div class="data-label">Ort. Göreli Kat Ötelemesi (Y)</div>
+						<div class="data-value">{formatNumber(summarizedData.avgYDrift)}</div>
 					</div>
 					<div class="data-item">
 						<div class="data-label">Maks. N/N₀</div>
@@ -170,7 +187,7 @@
 								<span>{story.performanceStatus}</span>
 							</div>
 
-							{#if showDetailedView && hasDetailData(story)}
+							{#if showDetailedView}
 								<button
 									class="expand-btn"
 									on:click={() => toggleStoryExpansion(story.story)}
@@ -189,17 +206,31 @@
 					{#if showDetailedView && expandedStories.has(story.story)}
 						<div class="story-details" transition:slide={{ duration: 200 }}>
 							<div class="details-grid">
-								{#if story.maxDrift !== undefined && direction}
+								{#if story.maxXDrift !== undefined}
 									<div class="detail-item">
-										<div class="detail-label">Maks. Göreli Kat Ötelemesi ({direction})</div>
-										<div class="detail-value">{formatNumber(story.maxDrift)}</div>
+										<div class="detail-label">Maks. Göreli Kat Ötelemesi (X)</div>
+										<div class="detail-value">{formatNumber(story.maxXDrift)}</div>
 									</div>
 								{/if}
 
-								{#if story.avgDrift !== undefined && direction}
+								{#if story.avgXDrift !== undefined}
 									<div class="detail-item">
-										<div class="detail-label">Ort. Göreli Kat Ötelemesi ({direction})</div>
-										<div class="detail-value">{formatNumber(story.avgDrift)}</div>
+										<div class="detail-label">Ort. Göreli Kat Ötelemesi (X)</div>
+										<div class="detail-value">{formatNumber(story.avgXDrift)}</div>
+									</div>
+								{/if}
+
+								{#if story.maxYDrift !== undefined}
+									<div class="detail-item">
+										<div class="detail-label">Maks. Göreli Kat Ötelemesi (Y)</div>
+										<div class="detail-value">{formatNumber(story.maxYDrift)}</div>
+									</div>
+								{/if}
+
+								{#if story.avgYDrift !== undefined}
+									<div class="detail-item">
+										<div class="detail-label">Ort. Göreli Kat Ötelemesi (Y)</div>
+										<div class="detail-value">{formatNumber(story.avgYDrift)}</div>
 									</div>
 								{/if}
 

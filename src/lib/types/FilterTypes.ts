@@ -28,4 +28,10 @@ export interface FilterCriteria {
     story: string;
     performanceStatus: 'Sağlıyor' | 'Sağlamıyor';
     isCurrentVersion: boolean;
+    maxXDrift?: number;
+    avgXDrift?: number;
+    maxYDrift?: number;
+    avgYDrift?: number;
+    maxNN0?: number;
+    avgNN0?: number;
   }
