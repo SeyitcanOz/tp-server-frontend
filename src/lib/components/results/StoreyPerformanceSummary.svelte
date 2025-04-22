@@ -6,17 +6,7 @@
 	export let storyPerformance: StoryPerformance[] = [];
 	export let performanceType: 'SH' | 'KH' | 'GO' | null = null;
 	export let direction: 'X' | 'Y' | null = null;
-	export let summarizedData: {
-		maxXDrift: number;
-		avgXDrift: number;
-		maxYDrift: number;
-		avgYDrift: number;
-		maxNN0: number;
-		avgNN0: number;
-	} | null = null;
 
-	// For toggling detailed view
-	let showDetailedView = false;
 	// Track which stories are expanded in detailed view
 	let expandedStories = new Set<string>();
 
@@ -74,32 +64,10 @@
 	// Sort stories for display
 	$: sortedStories = sortStories(storyPerformance);
 
-	// Check if any story has detail data
-	$: hasAnyDetailData = storyPerformance.some((story) => hasDetailData(story));
-
 	// Format the number to fixed decimal places
 	function formatNumber(value: number | null | undefined): string {
 		if (value === null || value === undefined) return '-';
-		return value.toFixed(4);
-	}
-
-	// Toggle between summary and detailed view
-	function toggleDetailedView() {
-		showDetailedView = !showDetailedView;
-		// Reset expanded stories when toggling view
-		expandedStories = new Set();
-	}
-
-	// Check if a story has any detail data
-	function hasDetailData(story: StoryPerformance): boolean {
-		return (
-			story.maxXDrift !== undefined ||
-			story.avgXDrift !== undefined ||
-			story.maxYDrift !== undefined ||
-			story.avgYDrift !== undefined ||
-			story.maxNN0 !== undefined ||
-			story.avgNN0 !== undefined
-		);
+		return value.toFixed(5);
 	}
 </script>
 
@@ -116,17 +84,6 @@
 					<span>{buildingPerformance}</span>
 				</div>
 			</div>
-
-			{#if hasAnyDetailData}
-				<button class="view-toggle-btn" on:click={toggleDetailedView}>
-					<span class="material-icons">
-						{showDetailedView ? 'view_list' : 'analytics'}
-					</span>
-					<span class="toggle-text">
-						{showDetailedView ? 'Basit Görünüm' : 'Detaylı Görünüm'}
-					</span>
-				</button>
-			{/if}
 		</div>
 	</div>
 
@@ -135,38 +92,6 @@
 			<p>Seçilen kriterlere göre sonuç bulunamadı.</p>
 		</div>
 	{:else}
-		<!-- Performance Data Summary -->
-		{#if summarizedData}
-			<div class="data-summary">
-				<div class="data-grid">
-					<div class="data-item">
-						<div class="data-label">Maks. Göreli Kat Ötelemesi (X)</div>
-						<div class="data-value">{formatNumber(summarizedData.maxXDrift)}</div>
-					</div>
-					<div class="data-item">
-						<div class="data-label">Ort. Göreli Kat Ötelemesi (X)</div>
-						<div class="data-value">{formatNumber(summarizedData.avgXDrift)}</div>
-					</div>
-					<div class="data-item">
-						<div class="data-label">Maks. Göreli Kat Ötelemesi (Y)</div>
-						<div class="data-value">{formatNumber(summarizedData.maxYDrift)}</div>
-					</div>
-					<div class="data-item">
-						<div class="data-label">Ort. Göreli Kat Ötelemesi (Y)</div>
-						<div class="data-value">{formatNumber(summarizedData.avgYDrift)}</div>
-					</div>
-					<div class="data-item">
-						<div class="data-label">Maks. N/N₀</div>
-						<div class="data-value">{formatNumber(summarizedData.maxNN0)}</div>
-					</div>
-					<div class="data-item">
-						<div class="data-label">Ort. N/N₀</div>
-						<div class="data-value">{formatNumber(summarizedData.avgNN0)}</div>
-					</div>
-				</div>
-			</div>
-		{/if}
-
 		<!-- Story Performance List -->
 		<div class="story-list">
 			{#each sortedStories as story (story.story)}
@@ -187,66 +112,53 @@
 								<span>{story.performanceStatus}</span>
 							</div>
 
-							{#if showDetailedView}
-								<button
-									class="expand-btn"
-									on:click={() => toggleStoryExpansion(story.story)}
-									aria-label={expandedStories.has(story.story)
-										? 'Collapse details'
-										: 'Expand details'}
-								>
-									<span class="material-icons">
-										{expandedStories.has(story.story) ? 'expand_less' : 'expand_more'}
-									</span>
-								</button>
-							{/if}
+							<button
+								class="expand-btn"
+								on:click={() => toggleStoryExpansion(story.story)}
+								aria-label={expandedStories.has(story.story)
+									? 'Collapse details'
+									: 'Expand details'}
+							>
+								<span class="material-icons">
+									{expandedStories.has(story.story) ? 'expand_less' : 'expand_more'}
+								</span>
+							</button>
 						</div>
 					</div>
 
-					{#if showDetailedView && expandedStories.has(story.story)}
+					{#if expandedStories.has(story.story)}
 						<div class="story-details" transition:slide={{ duration: 200 }}>
 							<div class="details-grid">
-								{#if story.maxXDrift !== undefined}
-									<div class="detail-item">
-										<div class="detail-label">Maks. Göreli Kat Ötelemesi (X)</div>
-										<div class="detail-value">{formatNumber(story.maxXDrift)}</div>
-									</div>
-								{/if}
+								<!-- Always show all six properties, even if undefined -->
+								<div class="detail-item">
+									<div class="detail-label">Maks. Göreli Kat Ötelemesi (X)</div>
+									<div class="detail-value">{formatNumber(story.maxXDrift)}</div>
+								</div>
 
-								{#if story.avgXDrift !== undefined}
-									<div class="detail-item">
-										<div class="detail-label">Ort. Göreli Kat Ötelemesi (X)</div>
-										<div class="detail-value">{formatNumber(story.avgXDrift)}</div>
-									</div>
-								{/if}
+								<div class="detail-item">
+									<div class="detail-label">Maks. Göreli Kat Ötelemesi (Y)</div>
+									<div class="detail-value">{formatNumber(story.maxYDrift)}</div>
+								</div>
 
-								{#if story.maxYDrift !== undefined}
-									<div class="detail-item">
-										<div class="detail-label">Maks. Göreli Kat Ötelemesi (Y)</div>
-										<div class="detail-value">{formatNumber(story.maxYDrift)}</div>
-									</div>
-								{/if}
+								<div class="detail-item">
+									<div class="detail-label">Ort. Göreli Kat Ötelemesi (X)</div>
+									<div class="detail-value">{formatNumber(story.avgXDrift)}</div>
+								</div>
 
-								{#if story.avgYDrift !== undefined}
-									<div class="detail-item">
-										<div class="detail-label">Ort. Göreli Kat Ötelemesi (Y)</div>
-										<div class="detail-value">{formatNumber(story.avgYDrift)}</div>
-									</div>
-								{/if}
+								<div class="detail-item">
+									<div class="detail-label">Ort. Göreli Kat Ötelemesi (Y)</div>
+									<div class="detail-value">{formatNumber(story.avgYDrift)}</div>
+								</div>
 
-								{#if story.maxNN0 !== undefined}
-									<div class="detail-item">
-										<div class="detail-label">Maks. N/N₀</div>
-										<div class="detail-value">{formatNumber(story.maxNN0)}</div>
-									</div>
-								{/if}
+								<div class="detail-item">
+									<div class="detail-label">Maks. N/N₀</div>
+									<div class="detail-value">{formatNumber(story.maxNN0)}</div>
+								</div>
 
-								{#if story.avgNN0 !== undefined}
-									<div class="detail-item">
-										<div class="detail-label">Ort. N/N₀</div>
-										<div class="detail-value">{formatNumber(story.avgNN0)}</div>
-									</div>
-								{/if}
+								<div class="detail-item">
+									<div class="detail-label">Ort. N/N₀</div>
+									<div class="detail-value">{formatNumber(story.avgNN0)}</div>
+								</div>
 							</div>
 						</div>
 					{/if}
@@ -310,67 +222,6 @@
 	.status-badge.failing {
 		background-color: #fee2e2;
 		color: #dc2626;
-	}
-
-	/* Toggle button styling */
-	.view-toggle-btn {
-		display: flex;
-		align-items: center;
-		gap: 0.3rem;
-		padding: 0.2rem 0.5rem;
-		border-radius: 3px;
-		background-color: #f1f5f9;
-		border: 1px solid #e2e8f0;
-		color: #334155;
-		font-size: 0.7rem;
-		cursor: pointer;
-		transition: all 0.15s ease;
-	}
-
-	.view-toggle-btn:hover {
-		background-color: #e2e8f0;
-	}
-
-	.view-toggle-btn .material-icons {
-		font-size: 0.85rem;
-	}
-
-	.toggle-text {
-		font-weight: 500;
-	}
-
-	/* Data Summary Section */
-	.data-summary {
-		margin-bottom: 1rem;
-		background-color: #f8fafc;
-		border-radius: 3px;
-		padding: 0.75rem;
-	}
-
-	.data-grid {
-		display: grid;
-		grid-template-columns: repeat(2, 1fr);
-		gap: 0.75rem;
-	}
-
-	.data-item {
-		display: flex;
-		flex-direction: column;
-		gap: 0.2rem;
-	}
-
-	.data-label {
-		font-size: 0.65rem;
-		color: #64748b;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.3px;
-	}
-
-	.data-value {
-		font-size: 0.9rem;
-		color: #1e3a8a;
-		font-weight: 600;
 	}
 
 	/* Story Performance List */
@@ -485,13 +336,8 @@
 			justify-content: space-between;
 		}
 
-		.data-grid,
 		.details-grid {
 			grid-template-columns: 1fr;
-		}
-
-		.toggle-text {
-			display: none; /* Hide text on small screens */
 		}
 	}
 

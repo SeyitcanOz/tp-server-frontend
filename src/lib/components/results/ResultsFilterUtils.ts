@@ -48,6 +48,7 @@ export function filterResultsData(
 
 /**
  * Extracts story performance status based on filtered results and selected performance criteria
+ * Takes the maximum values for each metric when multiple rows exist for the same story
  * @param filteredResults The filtered results data
  * @param performanceCriteria The selected performance criteria (SH, KH, GO)
  * @param direction The selected direction (X or Y)
@@ -72,7 +73,7 @@ export function getStoryPerformanceStatus(
 
   const stories = Array.from(storySet);
 
-  // For each story, check the performance status for the selected criteria
+  // For each story, check the performance status for the selected criteria and get max values
   return stories.map((story) => {
     // Get rows for this story
     const storyRows = filteredResults.filter((row) => row.Bina_kat === story);
@@ -83,7 +84,7 @@ export function getStoryPerformanceStatus(
     
     const failsPerformance = storyRows.some((row) => row[performanceColumnName] === 'Sağlamıyor');
     
-    // For story details, we should get values specific to this story
+    // Initialize values with undefined
     let maxXDrift: number | undefined;
     let avgXDrift: number | undefined;
     let maxYDrift: number | undefined;
@@ -91,17 +92,50 @@ export function getStoryPerformanceStatus(
     let maxNN0: number | undefined;
     let avgNN0: number | undefined;
     
-    if (storyRows.length > 0) {
-      // Since all drift values exist regardless of direction, take them from the first row
-      const storyRow = storyRows[0];
+    // Find the maximum values across all rows for this story
+    storyRows.forEach((row) => {
+      // Max X Drift
+      if (row.Bina_max_x_drift !== undefined) {
+        if (maxXDrift === undefined || row.Bina_max_x_drift > maxXDrift) {
+          maxXDrift = row.Bina_max_x_drift;
+        }
+      }
       
-      maxXDrift = storyRow.Bina_max_x_drift;
-      avgXDrift = storyRow.Bina_avg_x_drift;
-      maxYDrift = storyRow.Bina_max_y_drift;
-      avgYDrift = storyRow.Bina_avg_y_drift;
-      maxNN0 = storyRow.Bina_max_n_n0;
-      avgNN0 = storyRow.Bina_avg_n_n0;
-    }
+      // Avg X Drift
+      if (row.Bina_avg_x_drift !== undefined) {
+        if (avgXDrift === undefined || row.Bina_avg_x_drift > avgXDrift) {
+          avgXDrift = row.Bina_avg_x_drift;
+        }
+      }
+      
+      // Max Y Drift
+      if (row.Bina_max_y_drift !== undefined) {
+        if (maxYDrift === undefined || row.Bina_max_y_drift > maxYDrift) {
+          maxYDrift = row.Bina_max_y_drift;
+        }
+      }
+      
+      // Avg Y Drift
+      if (row.Bina_avg_y_drift !== undefined) {
+        if (avgYDrift === undefined || row.Bina_avg_y_drift > avgYDrift) {
+          avgYDrift = row.Bina_avg_y_drift;
+        }
+      }
+      
+      // Max N/N0
+      if (row.Bina_max_n_n0 !== undefined) {
+        if (maxNN0 === undefined || row.Bina_max_n_n0 > maxNN0) {
+          maxNN0 = row.Bina_max_n_n0;
+        }
+      }
+      
+      // Avg N/N0
+      if (row.Bina_avg_n_n0 !== undefined) {
+        if (avgNN0 === undefined || row.Bina_avg_n_n0 > avgNN0) {
+          avgNN0 = row.Bina_avg_n_n0;
+        }
+      }
+    });
     
     return {
       story,
