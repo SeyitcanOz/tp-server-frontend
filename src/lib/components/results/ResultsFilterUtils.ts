@@ -57,7 +57,6 @@ export function filterResultsData(
 export function getStoryPerformanceStatus(
   filteredResults: ResultRow[],
   performanceCriteria: 'SH' | 'KH' | 'GO' | null,
-  direction: 'X' | 'Y' | null = null
 ): StoryPerformance[] {
   if (!filteredResults || filteredResults.length === 0 || !performanceCriteria) {
     return [];

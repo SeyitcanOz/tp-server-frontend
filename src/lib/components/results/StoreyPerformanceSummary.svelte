@@ -5,7 +5,7 @@
 	// Props
 	export let storyPerformance: StoryPerformance[] = [];
 	export let performanceType: 'SH' | 'KH' | 'GO' | null = null;
-	export let direction: 'X' | 'Y' | null = null;
+	export const direction: 'X' | 'Y' | null = null; // Changed to export const since it's not used in this component
 
 	// Track which stories are expanded in detailed view
 	let expandedStories = new Set<string>();
@@ -28,16 +28,16 @@
 			case 'KH':
 				return 'Kontrollü Hasar (KH)';
 			case 'GO':
-				return 'Göçme Önleme (GO)';
+				return 'Göçmenin Engellenmesi (GO)';
 			default:
-				return 'Performans Değerlendirmesi';
+				return 'Performance Evaluation';
 		}
 	}
 
-	// Sort stories in a logical order (Bodrum first, then Kat 1, Kat 2, etc.)
+	// Sort stories in a logical order (Basement first, then Floor 1, Floor 2, etc.)
 	function sortStories(stories: StoryPerformance[]): StoryPerformance[] {
 		return [...stories].sort((a, b) => {
-			// Bodrum always comes first
+			// Basement always comes first
 			if (a.story === 'Bodrum') return -1;
 			if (b.story === 'Bodrum') return 1;
 
@@ -54,12 +54,28 @@
 		});
 	}
 
+	// Translate performance status to English
+	function translateStatus(status: string): string {
+		return status === 'Sağlıyor' ? 'Pass' : 'Fail';
+	}
+
+	// Get the icon name based on status
+	function getStatusIcon(status: string): string {
+		return status === 'Sağlıyor' ? 'check' : 'close';
+	}
+
+	function getBuildingStatusIcon(status: string): string {
+		return status === 'Sağlıyor' ? 'check_circle' : 'error';
+	}
+
 	// Calculate overall building performance
 	$: buildingPerformance = storyPerformance.some(
 		(story) => story.performanceStatus === 'Sağlamıyor'
 	)
 		? 'Sağlamıyor'
 		: 'Sağlıyor';
+
+	$: buildingPerformanceEnglish = translateStatus(buildingPerformance);
 
 	// Sort stories for display
 	$: sortedStories = sortStories(storyPerformance);
@@ -73,15 +89,15 @@
 
 <div class="performance-summary" transition:slide={{ duration: 200 }}>
 	<div class="summary-header">
-		<h3>{getPerformanceLabel(performanceType)} Sonuçları</h3>
+		<h3>{getPerformanceLabel(performanceType)} Results</h3>
 
 		<div class="header-actions">
 			<div class="overall-status">
 				<div class="status-badge {buildingPerformance === 'Sağlıyor' ? 'passing' : 'failing'}">
 					<span class="material-icons status-icon">
-						{buildingPerformance === 'Sağlıyor' ? 'check_circle' : 'error'}
+						{getBuildingStatusIcon(buildingPerformance)}
 					</span>
-					<span>{buildingPerformance}</span>
+					<span>{buildingPerformanceEnglish}</span>
 				</div>
 			</div>
 		</div>
@@ -89,7 +105,7 @@
 
 	{#if sortedStories.length === 0}
 		<div class="no-results">
-			<p>Seçilen kriterlere göre sonuç bulunamadı.</p>
+			<p>No results found for selected filters.</p>
 		</div>
 	{:else}
 		<!-- Story Performance List -->
@@ -107,9 +123,9 @@
 									: 'failing'}"
 							>
 								<span class="material-icons status-icon">
-									{story.performanceStatus === 'Sağlıyor' ? 'check' : 'close'}
+									{getStatusIcon(story.performanceStatus)}
 								</span>
-								<span>{story.performanceStatus}</span>
+								<span>{translateStatus(story.performanceStatus)}</span>
 							</div>
 
 							<button
@@ -129,34 +145,34 @@
 					{#if expandedStories.has(story.story)}
 						<div class="story-details" transition:slide={{ duration: 200 }}>
 							<div class="details-grid">
-								<!-- Always show all six properties, even if undefined -->
+								<!-- Display all drift properties -->
 								<div class="detail-item">
-									<div class="detail-label">Maks. Göreli Kat Ötelemesi (X)</div>
+									<div class="detail-label">Max Drift (X)</div>
 									<div class="detail-value">{formatNumber(story.maxXDrift)}</div>
 								</div>
 
 								<div class="detail-item">
-									<div class="detail-label">Maks. Göreli Kat Ötelemesi (Y)</div>
+									<div class="detail-label">Max Drift (Y)</div>
 									<div class="detail-value">{formatNumber(story.maxYDrift)}</div>
 								</div>
 
 								<div class="detail-item">
-									<div class="detail-label">Ort. Göreli Kat Ötelemesi (X)</div>
+									<div class="detail-label">Average Drift (X)</div>
 									<div class="detail-value">{formatNumber(story.avgXDrift)}</div>
 								</div>
 
 								<div class="detail-item">
-									<div class="detail-label">Ort. Göreli Kat Ötelemesi (Y)</div>
+									<div class="detail-label">Average Drift (Y)</div>
 									<div class="detail-value">{formatNumber(story.avgYDrift)}</div>
 								</div>
 
 								<div class="detail-item">
-									<div class="detail-label">Maks. N/N₀</div>
+									<div class="detail-label">Max N/N₀</div>
 									<div class="detail-value">{formatNumber(story.maxNN0)}</div>
 								</div>
 
 								<div class="detail-item">
-									<div class="detail-label">Ort. N/N₀</div>
+									<div class="detail-label">Average N/N₀</div>
 									<div class="detail-value">{formatNumber(story.avgNN0)}</div>
 								</div>
 							</div>

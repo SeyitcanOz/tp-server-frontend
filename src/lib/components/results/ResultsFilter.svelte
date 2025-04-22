@@ -50,13 +50,27 @@
 	// Function to check if all filters are selected
 	$: isFilterComplete =
 		filters.earthquake !== null && filters.performance !== null && filters.direction !== null;
+
+	// Get descriptive text for performance types
+	function getPerformanceDescription(type: 'SH' | 'KH' | 'GO' | null): string {
+		switch (type) {
+			case 'SH':
+				return 'Limited Damage (SH)';
+			case 'KH':
+				return 'Controlled Damage (KH)';
+			case 'GO':
+				return 'Collapse Prevention (GO)';
+			default:
+				return '';
+		}
+	}
 </script>
 
 <div class="results-filter">
 	<div class="filter-groups">
 		<!-- Earthquake Filter -->
 		<div class="filter-group">
-			<div class="filter-label">Deprem Düzeyi</div>
+			<div class="filter-label">Earthquake Level</div>
 			<div class="filter-options">
 				<button
 					class="filter-btn"
@@ -84,12 +98,13 @@
 
 		<!-- Performance Filter -->
 		<div class="filter-group">
-			<div class="filter-label">Performans</div>
+			<div class="filter-label">Performance</div>
 			<div class="filter-options">
 				<button
 					class="filter-btn"
 					class:active={filters.performance === 'SH'}
 					on:click={() => selectPerformance(filters.performance === 'SH' ? null : 'SH')}
+					title="Limited Damage"
 				>
 					SH
 				</button>
@@ -97,6 +112,7 @@
 					class="filter-btn"
 					class:active={filters.performance === 'KH'}
 					on:click={() => selectPerformance(filters.performance === 'KH' ? null : 'KH')}
+					title="Controlled Damage"
 				>
 					KH
 				</button>
@@ -104,6 +120,7 @@
 					class="filter-btn"
 					class:active={filters.performance === 'GO'}
 					on:click={() => selectPerformance(filters.performance === 'GO' ? null : 'GO')}
+					title="Collapse Prevention"
 				>
 					GO
 				</button>
@@ -112,7 +129,7 @@
 
 		<!-- Direction Filter -->
 		<div class="filter-group">
-			<div class="filter-label">Yön</div>
+			<div class="filter-label">Direction</div>
 			<div class="filter-options">
 				<button
 					class="filter-btn"
@@ -135,7 +152,7 @@
 	{#if filters.earthquake || filters.performance || filters.direction}
 		<div class="active-filters" transition:fade={{ duration: 150 }}>
 			<div class="filter-content">
-				<span class="filter-label">Aktif Filtreler:</span>
+				<span class="filter-label">Active Filters:</span>
 
 				<div class="filter-tags">
 					{#if filters.earthquake}
@@ -153,7 +170,9 @@
 
 					{#if filters.performance}
 						<div class="filter-tag">
-							<span class="tag-text">{filters.performance}</span>
+							<span class="tag-text" title={getPerformanceDescription(filters.performance)}
+								>{filters.performance}</span
+							>
 							<button
 								class="tag-remove"
 								on:click={() => selectPerformance(null)}
@@ -178,7 +197,7 @@
 					{/if}
 				</div>
 
-				<button class="clear-all-btn" on:click={clearFilters}>Temizle</button>
+				<button class="clear-all-btn" on:click={clearFilters}>Clear</button>
 			</div>
 		</div>
 	{/if}
@@ -186,12 +205,12 @@
 	{#if isFilterComplete}
 		<div class="filter-status complete" transition:fade={{ duration: 150 }}>
 			<span class="material-icons status-icon">check_circle</span>
-			<span>Filtreleme tamamlandı.</span>
+			<span>Filter selection complete.</span>
 		</div>
 	{:else}
 		<div class="filter-status incomplete" transition:fade={{ duration: 150 }}>
 			<span class="material-icons status-icon">info</span>
-			<span>Tüm kriterleri seçiniz.</span>
+			<span>Please select all criteria.</span>
 		</div>
 	{/if}
 </div>

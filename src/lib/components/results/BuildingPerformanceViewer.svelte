@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { slide } from 'svelte/transition';
+	import { slide, fade } from 'svelte/transition';
 	import BuildingModelViewer from '../BuildingModelViewer.svelte';
 	import ResultsFilter from './ResultsFilter.svelte';
 	import StoryPerformanceSummary from './StoreyPerformanceSummary.svelte';
@@ -101,11 +101,7 @@
 
 		// Update story performance if performance criterion is selected
 		if (filters.performance) {
-			storyPerformance = getStoryPerformanceStatus(
-				filteredResults,
-				filters.performance,
-				filters.direction
-			);
+			storyPerformance = getStoryPerformanceStatus(filteredResults, filters.performance);
 			console.log('Story performance status:', storyPerformance);
 
 			// Update story colors for visualization
@@ -228,23 +224,20 @@
 		<div class="header-actions">
 			{#if resultsData.length > 0}
 				<button
-					class="view-toggle-button"
+					class="icon-button"
 					class:active={showPerformanceView}
 					on:click={togglePerformanceView}
-					title={showPerformanceView ? 'Original Building View' : 'Performance Building View'}
+					title={showPerformanceView ? 'Switch to Original View' : 'Switch to Performance View'}
 				>
 					<span class="material-icons">
 						{showPerformanceView ? 'visibility' : 'assessment'}
 					</span>
-					<span class="toggle-text">
-						{showPerformanceView ? 'Original View' : 'Performance View'}
-					</span>
 				</button>
 			{/if}
 			<button
-				class="toggle-button"
+				class="icon-button"
 				on:click={toggleExpand}
-				aria-label={isExpanded ? 'Daralt' : 'Genişlet'}
+				aria-label={isExpanded ? 'Collapse' : 'Expand'}
 			>
 				<span class="material-icons"
 					>{isExpanded ? 'keyboard_arrow_up' : 'keyboard_arrow_down'}</span
@@ -257,7 +250,7 @@
 		<div class="model-content" transition:slide={{ duration: 300 }}>
 			{#if showPerformanceView && resultsData.length > 0}
 				<!-- Performance View with Filters -->
-				<div class="performance-view">
+				<div class="performance-view" in:fade={{ duration: 200 }}>
 					<ResultsFilter on:filterChange={handleFilterChange} bind:filters />
 
 					{#if isFilterSelectionComplete(filters)}
@@ -271,7 +264,7 @@
 					{#if isLoadingModel}
 						<div class="loading-container">
 							<div class="loader"></div>
-							<p>3D model yükleniyor...</p>
+							<p>Loading 3D model...</p>
 						</div>
 					{:else if modelError}
 						<div class="no-results">
@@ -281,10 +274,10 @@
 					{:else if modelData}
 						<div class="model-viewer-wrapper">
 							<div class="model-controls">
-								<button class="action-button" on:click={resetView} title="Görünümü Sıfırla">
+								<button class="action-button" on:click={resetView} title="Reset View">
 									<span class="material-icons">cached</span>
 								</button>
-								<button class="action-button" on:click={toggleFullscreen} title="Tam Ekran">
+								<button class="action-button" on:click={toggleFullscreen} title="Fullscreen">
 									<span class="material-icons">fullscreen</span>
 								</button>
 							</div>
@@ -302,36 +295,38 @@
 				</div>
 			{:else}
 				<!-- Original Building View -->
-				{#if isLoadingModel}
-					<div class="loading-container">
-						<div class="loader"></div>
-						<p>3D model yükleniyor...</p>
-					</div>
-				{:else if modelError}
-					<div class="no-results">
-						<span class="material-icons no-results-icon">3d_rotation</span>
-						<p>{modelError}</p>
-					</div>
-				{:else if modelData}
-					<div class="model-viewer-wrapper">
-						<div class="model-controls">
-							<button class="action-button" on:click={resetView} title="Görünümü Sıfırla">
-								<span class="material-icons">cached</span>
-							</button>
-							<button class="action-button" on:click={toggleFullscreen} title="Tam Ekran">
-								<span class="material-icons">fullscreen</span>
-							</button>
+				<div in:fade={{ duration: 200 }}>
+					{#if isLoadingModel}
+						<div class="loading-container">
+							<div class="loader"></div>
+							<p>Loading 3D model...</p>
 						</div>
-						<div class="model-container" bind:this={viewerContainer}>
-							<BuildingModelViewer
-								{modelData}
-								{width}
-								{height}
-								bind:this={buildingViewerComponent}
-							/>
+					{:else if modelError}
+						<div class="no-results">
+							<span class="material-icons no-results-icon">3d_rotation</span>
+							<p>{modelError}</p>
 						</div>
-					</div>
-				{/if}
+					{:else if modelData}
+						<div class="model-viewer-wrapper">
+							<div class="model-controls">
+								<button class="action-button" on:click={resetView} title="Reset View">
+									<span class="material-icons">cached</span>
+								</button>
+								<button class="action-button" on:click={toggleFullscreen} title="Fullscreen">
+									<span class="material-icons">fullscreen</span>
+								</button>
+							</div>
+							<div class="model-container" bind:this={viewerContainer}>
+								<BuildingModelViewer
+									{modelData}
+									{width}
+									{height}
+									bind:this={buildingViewerComponent}
+								/>
+							</div>
+						</div>
+					{/if}
+				</div>
 			{/if}
 		</div>
 	{/if}
@@ -368,7 +363,7 @@
 		gap: 0.5rem;
 	}
 
-	.toggle-button {
+	.icon-button {
 		width: 24px;
 		height: 24px;
 		border-radius: 4px;
@@ -379,46 +374,22 @@
 		align-items: center;
 		justify-content: center;
 		cursor: pointer;
-		transition: all 0.15s ease;
+		transition: all 0.2s ease;
 	}
 
-	.toggle-button:hover {
+	.icon-button:hover {
 		background-color: #e2e8f0;
 		color: #334155;
 	}
 
-	.toggle-button .material-icons {
-		font-size: 1.1rem;
-	}
-
-	/* View toggle button */
-	.view-toggle-button {
-		display: flex;
-		align-items: center;
-		gap: 0.4rem;
-		padding: 0.35rem 0.7rem;
-		border-radius: 4px;
-		background-color: #f1f5f9;
-		border: 1px solid #e2e8f0;
-		color: #334155;
-		font-size: 0.75rem;
-		cursor: pointer;
-		transition: all 0.15s ease;
-		height: 24px;
-	}
-
-	.view-toggle-button:hover {
-		background-color: #e2e8f0;
-	}
-
-	.view-toggle-button.active {
+	.icon-button.active {
 		background-color: #3b82f6;
 		border-color: #3b82f6;
 		color: white;
 	}
 
-	.toggle-text {
-		font-weight: 500;
+	.icon-button .material-icons {
+		font-size: 1.1rem;
 	}
 
 	/* Performance view */
@@ -446,8 +417,8 @@
 	}
 
 	.action-button {
-		width: 32px;
-		height: 32px;
+		width: 24px;
+		height: 24px;
 		border-radius: 3px;
 		display: flex;
 		align-items: center;
@@ -520,12 +491,5 @@
 	:global(:fullscreen) .model-container {
 		width: 100vw !important;
 		height: 100vh !important;
-	}
-
-	/* Responsive styles */
-	@media (max-width: 640px) {
-		.toggle-text {
-			display: none;
-		}
 	}
 </style>

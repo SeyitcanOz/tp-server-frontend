@@ -55,7 +55,6 @@ export function filterResultsData(
 export function getStoryPerformanceStatus(
   filteredResults: ResultRow[],
   performanceCriteria: 'SH' | 'KH' | 'GO' | null,
-  direction: 'X' | 'Y' | null = null
 ): StoryPerformance[] {
   if (!filteredResults || filteredResults.length === 0 || !performanceCriteria) {
     return [];
@@ -65,7 +64,7 @@ export function getStoryPerformanceStatus(
   const storySet = new Set<string>();
   filteredResults.forEach((row) => {
     if (row.Bina_kat) {
-      storySet.add(row.Bina_kat);
+      storySet.add(row.Bina_kat as string);
     }
   });
 
@@ -82,50 +81,78 @@ export function getStoryPerformanceStatus(
     
     const failsPerformance = storyRows.some((row) => row[performanceColumnName] === 'Sağlamıyor');
     
-    // Get the max and avg values for this story
-    let maxDrift: number | undefined;
-    let avgDrift: number | undefined;
+    // Initialize drift values
+    let maxXDrift: number | undefined;
+    let avgXDrift: number | undefined;
+    let maxYDrift: number | undefined;
+    let avgYDrift: number | undefined;
     let maxNN0: number | undefined;
     let avgNN0: number | undefined;
     
     if (storyRows.length > 0) {
-      // Initialize with first row values
-      const firstRow = storyRows[0];
-      
-      if (direction === 'X') {
-        maxDrift = firstRow.Bina_max_x_drift;
-        avgDrift = firstRow.Bina_avg_x_drift;
-      } else if (direction === 'Y') {
-        maxDrift = firstRow.Bina_max_y_drift;
-        avgDrift = firstRow.Bina_avg_y_drift;
-      }
-      
-      maxNN0 = firstRow.Bina_max_n_n0;
-      avgNN0 = firstRow.Bina_avg_n_n0;
-      
-      // Find max/avg values across all rows for this story
+      // Process all rows for this story to find max values
       storyRows.forEach((row) => {
-        if (direction === 'X') {
-          if (row.Bina_max_x_drift !== undefined && (maxDrift === undefined || row.Bina_max_x_drift > maxDrift)) {
-            maxDrift = row.Bina_max_x_drift;
-          }
-          if (row.Bina_avg_x_drift !== undefined && (avgDrift === undefined || row.Bina_avg_x_drift > avgDrift)) {
-            avgDrift = row.Bina_avg_x_drift;
-          }
-        } else if (direction === 'Y') {
-          if (row.Bina_max_y_drift !== undefined && (maxDrift === undefined || row.Bina_max_y_drift > maxDrift)) {
-            maxDrift = row.Bina_max_y_drift;
-          }
-          if (row.Bina_avg_y_drift !== undefined && (avgDrift === undefined || row.Bina_avg_y_drift > avgDrift)) {
-            avgDrift = row.Bina_avg_y_drift;
+        // Process X direction values
+        if (row.Bina_max_x_drift !== undefined) {
+          const value = typeof row.Bina_max_x_drift === 'string' 
+            ? parseFloat(row.Bina_max_x_drift) 
+            : row.Bina_max_x_drift;
+            
+          if (!isNaN(value) && (maxXDrift === undefined || value > maxXDrift)) {
+            maxXDrift = value;
           }
         }
         
-        if (row.Bina_max_n_n0 !== undefined && (maxNN0 === undefined || row.Bina_max_n_n0 > maxNN0)) {
-          maxNN0 = row.Bina_max_n_n0;
+        if (row.Bina_avg_x_drift !== undefined) {
+          const value = typeof row.Bina_avg_x_drift === 'string' 
+            ? parseFloat(row.Bina_avg_x_drift) 
+            : row.Bina_avg_x_drift;
+            
+          if (!isNaN(value) && (avgXDrift === undefined || value > avgXDrift)) {
+            avgXDrift = value;
+          }
         }
-        if (row.Bina_avg_n_n0 !== undefined && (avgNN0 === undefined || row.Bina_avg_n_n0 > avgNN0)) {
-          avgNN0 = row.Bina_avg_n_n0;
+        
+        // Process Y direction values
+        if (row.Bina_max_y_drift !== undefined) {
+          const value = typeof row.Bina_max_y_drift === 'string' 
+            ? parseFloat(row.Bina_max_y_drift) 
+            : row.Bina_max_y_drift;
+            
+          if (!isNaN(value) && (maxYDrift === undefined || value > maxYDrift)) {
+            maxYDrift = value;
+          }
+        }
+        
+        if (row.Bina_avg_y_drift !== undefined) {
+          const value = typeof row.Bina_avg_y_drift === 'string' 
+            ? parseFloat(row.Bina_avg_y_drift) 
+            : row.Bina_avg_y_drift;
+            
+          if (!isNaN(value) && (avgYDrift === undefined || value > avgYDrift)) {
+            avgYDrift = value;
+          }
+        }
+        
+        // Process N/N0 values
+        if (row.Bina_max_n_n0 !== undefined) {
+          const value = typeof row.Bina_max_n_n0 === 'string' 
+            ? parseFloat(row.Bina_max_n_n0) 
+            : row.Bina_max_n_n0;
+            
+          if (!isNaN(value) && (maxNN0 === undefined || value > maxNN0)) {
+            maxNN0 = value;
+          }
+        }
+        
+        if (row.Bina_avg_n_n0 !== undefined) {
+          const value = typeof row.Bina_avg_n_n0 === 'string' 
+            ? parseFloat(row.Bina_avg_n_n0) 
+            : row.Bina_avg_n_n0;
+            
+          if (!isNaN(value) && (avgNN0 === undefined || value > avgNN0)) {
+            avgNN0 = value;
+          }
         }
       });
     }
@@ -134,8 +161,10 @@ export function getStoryPerformanceStatus(
       story,
       performanceStatus: failsPerformance ? 'Sağlamıyor' : 'Sağlıyor',
       isCurrentVersion: false, // This will be set by the consumer based on the current version
-      maxDrift,
-      avgDrift,
+      maxXDrift,
+      avgXDrift,
+      maxYDrift,
+      avgYDrift,
       maxNN0,
       avgNN0
     };
