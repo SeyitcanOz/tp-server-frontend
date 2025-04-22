@@ -50,11 +50,13 @@ export function filterResultsData(
  * Extracts story performance status based on filtered results and selected performance criteria
  * @param filteredResults The filtered results data
  * @param performanceCriteria The selected performance criteria (SH, KH, GO)
+ * @param direction The selected direction (X or Y)
  * @returns Array of story performance status objects
  */
 export function getStoryPerformanceStatus(
   filteredResults: ResultRow[],
-  performanceCriteria: 'SH' | 'KH' | 'GO' | null
+  performanceCriteria: 'SH' | 'KH' | 'GO' | null,
+  direction: 'X' | 'Y' | null = null
 ): StoryPerformance[] {
   if (!filteredResults || filteredResults.length === 0 || !performanceCriteria) {
     return [];
@@ -81,10 +83,45 @@ export function getStoryPerformanceStatus(
     
     const failsPerformance = storyRows.some((row) => row[performanceColumnName] === 'Sağlamıyor');
     
+    // Get the max values for this story
+    let maxDrift = 0;
+    let avgDrift = 0;
+    let maxNN0 = 0;
+    let avgNN0 = 0;
+    
+    storyRows.forEach((row) => {
+      if (direction === 'X') {
+        if (row.Bina_max_x_drift !== undefined && row.Bina_max_x_drift > maxDrift) {
+          maxDrift = row.Bina_max_x_drift;
+        }
+        if (row.Bina_avg_x_drift !== undefined && row.Bina_avg_x_drift > avgDrift) {
+          avgDrift = row.Bina_avg_x_drift;
+        }
+      } else if (direction === 'Y') {
+        if (row.Bina_max_y_drift !== undefined && row.Bina_max_y_drift > maxDrift) {
+          maxDrift = row.Bina_max_y_drift;
+        }
+        if (row.Bina_avg_y_drift !== undefined && row.Bina_avg_y_drift > avgDrift) {
+          avgDrift = row.Bina_avg_y_drift;
+        }
+      }
+      
+      if (row.Bina_max_n_n0 !== undefined && row.Bina_max_n_n0 > maxNN0) {
+        maxNN0 = row.Bina_max_n_n0;
+      }
+      if (row.Bina_avg_n_n0 !== undefined && row.Bina_avg_n_n0 > avgNN0) {
+        avgNN0 = row.Bina_avg_n_n0;
+      }
+    });
+    
     return {
       story,
       performanceStatus: failsPerformance ? 'Sağlamıyor' : 'Sağlıyor',
-      isCurrentVersion: false // This will be set by the consumer based on the current version
+      isCurrentVersion: false, // This will be set by the consumer based on the current version
+      maxDrift,
+      avgDrift,
+      maxNN0,
+      avgNN0
     };
   });
 }

@@ -392,7 +392,6 @@
 </div>
 
 <style>
-	/* Match the results-section style from projects/[projectId]/versions/[versionNumber]/+page.svelte */
 	.results-section {
 		background-color: white;
 		border-radius: 8px;

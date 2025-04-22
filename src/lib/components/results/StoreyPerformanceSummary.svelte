@@ -13,6 +13,9 @@
 		avgNN0: number;
 	} | null = null;
 
+	// For toggling detailed view
+	let showDetailedView = false;
+
 	// Format the performance type for display
 	function getPerformanceLabel(type: 'SH' | 'KH' | 'GO' | null): string {
 		switch (type) {
@@ -61,6 +64,11 @@
 	function formatNumber(value: number | null | undefined): string {
 		if (value === null || value === undefined) return '-';
 		return value.toFixed(4);
+	}
+
+	// Toggle between summary and detailed view
+	function toggleDetailedView() {
+		showDetailedView = !showDetailedView;
 	}
 </script>
 
