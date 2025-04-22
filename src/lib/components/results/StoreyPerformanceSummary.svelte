@@ -5,6 +5,13 @@
 	// Props
 	export let storyPerformance: StoryPerformance[] = [];
 	export let performanceType: 'SH' | 'KH' | 'GO' | null = null;
+	export let direction: 'X' | 'Y' | null = null;
+	export let summarizedData: {
+		maxDrift: number;
+		avgDrift: number;
+		maxNN0: number;
+		avgNN0: number;
+	} | null = null;
 
 	// Format the performance type for display
 	function getPerformanceLabel(type: 'SH' | 'KH' | 'GO' | null): string {
@@ -49,6 +56,12 @@
 
 	// Sort stories for display
 	$: sortedStories = sortStories(storyPerformance);
+
+	// Format the number to fixed decimal places
+	function formatNumber(value: number | null | undefined): string {
+		if (value === null || value === undefined) return '-';
+		return value.toFixed(4);
+	}
 </script>
 
 <div class="performance-summary" transition:slide={{ duration: 200 }}>
@@ -56,9 +69,11 @@
 		<h3>{getPerformanceLabel(performanceType)} Sonuçları</h3>
 
 		<div class="overall-status">
-			<div class="status-label">Genel Bina Durumu:</div>
 			<div class="status-badge {buildingPerformance === 'Sağlıyor' ? 'passing' : 'failing'}">
-				{buildingPerformance}
+				<span class="material-icons status-icon">
+					{buildingPerformance === 'Sağlıyor' ? 'check_circle' : 'error'}
+				</span>
+				<span>{buildingPerformance}</span>
 			</div>
 		</div>
 	</div>
@@ -68,30 +83,47 @@
 			<p>Seçilen kriterlere göre sonuç bulunamadı.</p>
 		</div>
 	{:else}
+		<!-- Performance Data Summary -->
+		{#if summarizedData}
+			<div class="data-summary">
+				<div class="data-grid">
+					<div class="data-item">
+						<div class="data-label">Maks. Göreli Kat Ötelemesi ({direction})</div>
+						<div class="data-value">{formatNumber(summarizedData.maxDrift)}</div>
+					</div>
+					<div class="data-item">
+						<div class="data-label">Ort. Göreli Kat Ötelemesi ({direction})</div>
+						<div class="data-value">{formatNumber(summarizedData.avgDrift)}</div>
+					</div>
+					<div class="data-item">
+						<div class="data-label">Maks. N/N₀</div>
+						<div class="data-value">{formatNumber(summarizedData.maxNN0)}</div>
+					</div>
+					<div class="data-item">
+						<div class="data-label">Ort. N/N₀</div>
+						<div class="data-value">{formatNumber(summarizedData.avgNN0)}</div>
+					</div>
+				</div>
+			</div>
+		{/if}
+
+		<!-- Story Performance List -->
 		<div class="story-list">
 			{#each sortedStories as story}
 				<div class="story-item">
-					<div class="story-name">{story.story}</div>
-					<div class="story-status">
-						<div
-							class="status-badge {story.performanceStatus === 'Sağlıyor' ? 'passing' : 'failing'}"
-						>
-							{story.performanceStatus}
-						</div>
+					<div class="story-info">
+						<span class="story-name">{story.story}</span>
+					</div>
+					<div
+						class="status-badge {story.performanceStatus === 'Sağlıyor' ? 'passing' : 'failing'}"
+					>
+						<span class="material-icons status-icon">
+							{story.performanceStatus === 'Sağlıyor' ? 'check' : 'close'}
+						</span>
+						<span>{story.performanceStatus}</span>
 					</div>
 				</div>
 			{/each}
-		</div>
-
-		<div class="legend">
-			<div class="legend-item">
-				<div class="legend-color passing"></div>
-				<div class="legend-label">Sağlıyor</div>
-			</div>
-			<div class="legend-item">
-				<div class="legend-color failing"></div>
-				<div class="legend-label">Sağlamıyor</div>
-			</div>
 		</div>
 	{/if}
 </div>
@@ -99,48 +131,41 @@
 <style>
 	.performance-summary {
 		background-color: white;
-		border-radius: 8px;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-		padding: 1.25rem;
-		margin-bottom: 1.5rem;
+		border-radius: 4px;
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+		border: 1px solid #f1f5f9;
+		padding: 1rem;
+		margin-bottom: 1rem;
 	}
 
 	.summary-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 1rem;
-		flex-wrap: wrap;
-		gap: 1rem;
+		margin-bottom: 0.75rem;
+		padding-bottom: 0.5rem;
+		border-bottom: 1px solid #f1f5f9;
 	}
 
 	h3 {
-		font-size: 1rem;
+		font-size: 0.9rem;
 		color: #1e3a8a;
 		margin: 0;
 		font-weight: 500;
 	}
 
-	.overall-status {
-		display: flex;
+	.status-badge {
+		display: inline-flex;
 		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.status-label {
-		font-size: 0.8rem;
-		color: #64748b;
+		gap: 0.25rem;
+		padding: 0.15rem 0.4rem;
+		border-radius: 3px;
+		font-size: 0.7rem;
 		font-weight: 500;
 	}
 
-	.status-badge {
-		padding: 0.25rem 0.5rem;
-		border-radius: 4px;
-		font-size: 0.75rem;
-		font-weight: 600;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
+	.status-icon {
+		font-size: 0.8rem;
 	}
 
 	.status-badge.passing {
@@ -153,73 +178,84 @@
 		color: #dc2626;
 	}
 
+	/* Data Summary Section */
+	.data-summary {
+		margin-bottom: 1rem;
+		background-color: #f8fafc;
+		border-radius: 3px;
+		padding: 0.75rem;
+	}
+
+	.data-grid {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 0.75rem;
+	}
+
+	.data-item {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+	}
+
+	.data-label {
+		font-size: 0.65rem;
+		color: #64748b;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.3px;
+	}
+
+	.data-value {
+		font-size: 0.9rem;
+		color: #1e3a8a;
+		font-weight: 600;
+	}
+
+	/* Story Performance List */
 	.story-list {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
-		margin-bottom: 1rem;
+		gap: 0.25rem;
 	}
 
 	.story-item {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		padding: 0.5rem 0.75rem;
-		border-radius: 4px;
+		padding: 0.4rem 0.5rem;
+		border-radius: 3px;
 		background-color: #f8fafc;
-		border: 1px solid #e2e8f0;
+		border: 1px solid #f1f5f9;
 		transition: all 0.15s ease;
 	}
 
 	.story-item:hover {
 		background-color: #f1f5f9;
-		transform: translateY(-1px);
-		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 	}
 
 	.story-name {
-		font-size: 0.85rem;
+		font-size: 0.75rem;
 		font-weight: 500;
 		color: #334155;
 	}
 
 	.no-results {
 		text-align: center;
-		padding: 1.5rem;
+		padding: 1rem;
 		color: #64748b;
-		font-size: 0.9rem;
+		font-size: 0.8rem;
 	}
 
-	.legend {
-		display: flex;
-		gap: 1rem;
-		margin-top: 1rem;
-		padding-top: 1rem;
-		border-top: 1px solid #e2e8f0;
-	}
+	@media (max-width: 640px) {
+		.data-grid {
+			grid-template-columns: 1fr;
+		}
 
-	.legend-item {
-		display: flex;
-		align-items: center;
-		gap: 0.3rem;
-	}
-
-	.legend-color {
-		width: 16px;
-		height: 16px;
-		border-radius: 4px;
-	}
-
-	.legend-color.passing {
-		background-color: #4ade80;
-	}
-
-	.legend-color.failing {
-		background-color: #ef4444;
-	}
-
-	.legend-label {
-		font-size: 0.75rem;
-		color: #64748b;
+		.summary-header {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 0.5rem;
+		}
 	}
 </style>

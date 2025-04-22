@@ -12,6 +12,12 @@ export interface FilterCriteria {
     Bina_SH?: string;
     Bina_KH?: string;
     Bina_GO?: string;
+    Bina_max_x_drift?: number;
+    Bina_max_y_drift?: number;
+    Bina_avg_x_drift?: number;
+    Bina_avg_y_drift?: number;
+    Bina_max_n_n0?: number;
+    Bina_avg_n_n0?: number;
     // You can add more known properties here
     
     // For any remaining unknown properties

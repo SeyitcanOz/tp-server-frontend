@@ -47,24 +47,6 @@
 		dispatch('filterChange', filters);
 	}
 
-	// Map filter values to display names
-	const earthquakeNames: Record<string, string> = {
-		'DD-1': 'DD-1',
-		'DD-2': 'DD-2',
-		'DD-3': 'DD-3'
-	};
-
-	const performanceNames: Record<string, string> = {
-		SH: 'SH (Sınırlı Hasar)',
-		KH: 'KH (Kontrollü Hasar)',
-		GO: 'GO (Göçme Önleme)'
-	};
-
-	const directionNames: Record<string, string> = {
-		X: 'X Yönü',
-		Y: 'Y Yönü'
-	};
-
 	// Function to check if all filters are selected
 	$: isFilterComplete =
 		filters.earthquake !== null && filters.performance !== null && filters.direction !== null;
@@ -74,7 +56,7 @@
 	<div class="filter-groups">
 		<!-- Earthquake Filter -->
 		<div class="filter-group">
-			<div class="filter-label">Deprem Düzeyi:</div>
+			<div class="filter-label">Deprem Düzeyi</div>
 			<div class="filter-options">
 				<button
 					class="filter-btn"
@@ -102,7 +84,7 @@
 
 		<!-- Performance Filter -->
 		<div class="filter-group">
-			<div class="filter-label">Performans Düzeyi:</div>
+			<div class="filter-label">Performans</div>
 			<div class="filter-options">
 				<button
 					class="filter-btn"
@@ -130,21 +112,21 @@
 
 		<!-- Direction Filter -->
 		<div class="filter-group">
-			<div class="filter-label">Yönü:</div>
+			<div class="filter-label">Yön</div>
 			<div class="filter-options">
 				<button
 					class="filter-btn"
 					class:active={filters.direction === 'X'}
 					on:click={() => selectDirection(filters.direction === 'X' ? null : 'X')}
 				>
-					X Yönü
+					X
 				</button>
 				<button
 					class="filter-btn"
 					class:active={filters.direction === 'Y'}
 					on:click={() => selectDirection(filters.direction === 'Y' ? null : 'Y')}
 				>
-					Y Yönü
+					Y
 				</button>
 			</div>
 		</div>
@@ -158,12 +140,7 @@
 				<div class="filter-tags">
 					{#if filters.earthquake}
 						<div class="filter-tag">
-							<span class="tag-icon">
-								<span class="material-icons">filter_alt</span>
-							</span>
-							<span class="tag-text">
-								Deprem: {earthquakeNames[filters.earthquake]}
-							</span>
+							<span class="tag-text">{filters.earthquake}</span>
 							<button
 								class="tag-remove"
 								on:click={() => selectEarthquake(null)}
@@ -176,12 +153,7 @@
 
 					{#if filters.performance}
 						<div class="filter-tag">
-							<span class="tag-icon">
-								<span class="material-icons">filter_alt</span>
-							</span>
-							<span class="tag-text">
-								Performans: {performanceNames[filters.performance]}
-							</span>
+							<span class="tag-text">{filters.performance}</span>
 							<button
 								class="tag-remove"
 								on:click={() => selectPerformance(null)}
@@ -194,12 +166,7 @@
 
 					{#if filters.direction}
 						<div class="filter-tag">
-							<span class="tag-icon">
-								<span class="material-icons">filter_alt</span>
-							</span>
-							<span class="tag-text">
-								Yönü: {directionNames[filters.direction]}
-							</span>
+							<span class="tag-text">{filters.direction}</span>
 							<button
 								class="tag-remove"
 								on:click={() => selectDirection(null)}
@@ -219,12 +186,12 @@
 	{#if isFilterComplete}
 		<div class="filter-status complete" transition:fade={{ duration: 150 }}>
 			<span class="material-icons status-icon">check_circle</span>
-			<span>Filtreleme tamamlandı. Sonuçlar güncellendi.</span>
+			<span>Filtreleme tamamlandı.</span>
 		</div>
 	{:else}
 		<div class="filter-status incomplete" transition:fade={{ duration: 150 }}>
 			<span class="material-icons status-icon">info</span>
-			<span>Tüm filtre kriterlerini seçiniz.</span>
+			<span>Tüm kriterleri seçiniz.</span>
 		</div>
 	{/if}
 </div>
@@ -232,51 +199,49 @@
 <style>
 	.results-filter {
 		background-color: white;
-		border-radius: 8px;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-		padding: 1.25rem;
-		margin-bottom: 1.5rem;
+		border-radius: 4px;
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+		border: 1px solid #f1f5f9;
+		padding: 0.75rem;
+		margin-bottom: 1rem;
 	}
 
 	.filter-groups {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 1.25rem;
-		margin-bottom: 1rem;
+		gap: 1rem;
 	}
 
 	.filter-group {
 		display: flex;
 		flex-direction: column;
-		gap: 0.4rem;
-		min-width: 180px;
+		gap: 0.3rem;
+		min-width: 120px;
 	}
 
 	.filter-label {
-		font-size: 0.75rem;
+		font-size: 0.65rem;
 		color: #64748b;
 		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.3px;
 	}
 
 	.filter-options {
 		display: flex;
-		gap: 0.4rem;
-		flex-wrap: wrap;
+		gap: 0.25rem;
 	}
 
 	.filter-btn {
-		padding: 0.35rem 0.7rem;
-		border-radius: 4px;
+		padding: 0.25rem 0.5rem;
+		border-radius: 3px;
 		background-color: #f1f5f9;
 		border: 1px solid #e2e8f0;
 		color: #334155;
-		font-size: 0.75rem;
+		font-size: 0.7rem;
 		font-weight: 500;
 		cursor: pointer;
 		transition: all 0.15s ease;
-		display: flex;
-		align-items: center;
-		gap: 0.3rem;
 	}
 
 	.filter-btn:hover {
@@ -284,31 +249,30 @@
 	}
 
 	.filter-btn.active {
-		background-color: #3b82f6;
-		border-color: #3b82f6;
+		background-color: #5c9fff;
+		border-color: #5c9fff;
 		color: white;
 	}
 
 	/* Active Filters */
 	.active-filters {
-		padding: 0.8rem;
+		padding: 0.5rem;
 		background-color: #f8fafc;
-		border-radius: 6px;
-		border: 1px solid #e2e8f0;
-		margin-top: 1rem;
+		border-radius: 3px;
+		margin-top: 0.75rem;
 	}
 
 	.filter-content {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.6rem;
+		gap: 0.5rem;
 		align-items: center;
 	}
 
 	.filter-tags {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.4rem;
+		gap: 0.25rem;
 		flex: 1;
 	}
 
@@ -317,27 +281,14 @@
 		align-items: center;
 		background-color: #e0f2fe;
 		color: #0369a1;
-		padding: 0.25rem 0.4rem;
-		border-radius: 4px;
-		font-size: 0.7rem;
-		gap: 0.4rem;
-		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-	}
-
-	.tag-icon {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-
-	.tag-icon .material-icons {
-		font-size: 0.75rem;
+		padding: 0.15rem 0.3rem;
+		border-radius: 3px;
+		font-size: 0.65rem;
+		gap: 0.25rem;
 	}
 
 	.tag-text {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		font-weight: 500;
 	}
 
 	.tag-remove {
@@ -349,8 +300,8 @@
 		color: #0369a1;
 		cursor: pointer;
 		border-radius: 50%;
-		width: 16px;
-		height: 16px;
+		width: 14px;
+		height: 14px;
 		padding: 0;
 		transition: background-color 0.15s ease;
 	}
@@ -360,22 +311,18 @@
 	}
 
 	.tag-remove .material-icons {
-		font-size: 0.7rem;
+		font-size: 0.65rem;
 	}
 
 	.clear-all-btn {
-		padding: 0.25rem 0.5rem;
-		border-radius: 4px;
+		padding: 0.15rem 0.4rem;
+		border-radius: 3px;
 		background-color: #f1f5f9;
 		border: 1px solid #e2e8f0;
 		color: #64748b;
-		font-size: 0.7rem;
+		font-size: 0.65rem;
 		cursor: pointer;
 		transition: all 0.15s ease;
-		margin-left: auto;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
 		font-family: inherit;
 	}
 
@@ -388,11 +335,11 @@
 	.filter-status {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		margin-top: 1rem;
-		padding: 0.6rem 0.8rem;
-		border-radius: 6px;
-		font-size: 0.75rem;
+		gap: 0.3rem;
+		margin-top: 0.75rem;
+		padding: 0.4rem 0.5rem;
+		border-radius: 3px;
+		font-size: 0.7rem;
 	}
 
 	.filter-status.complete {
@@ -406,19 +353,23 @@
 	}
 
 	.status-icon {
-		font-size: 1rem;
+		font-size: 0.85rem;
 	}
 
 	/* Responsive styles */
 	@media (max-width: 768px) {
 		.filter-groups {
 			flex-direction: column;
-			gap: 1rem;
+			gap: 0.75rem;
 		}
 
 		.filter-group {
 			min-width: 0;
 			width: 100%;
+		}
+
+		.filter-options {
+			justify-content: flex-start;
 		}
 
 		.active-filters .filter-content {
@@ -427,9 +378,8 @@
 		}
 
 		.clear-all-btn {
-			margin-left: 0;
 			align-self: flex-end;
-			margin-top: 0.5rem;
+			margin-top: 0.25rem;
 		}
 	}
 </style>

@@ -35,6 +35,12 @@
 		performance: null,
 		direction: null
 	};
+	let summarizedData: {
+		maxDrift: number;
+		avgDrift: number;
+		maxNN0: number;
+		avgNN0: number;
+	} | null = null;
 
 	// Process and extract model data from version
 	function processVersionData() {
@@ -92,6 +98,7 @@
 			filteredResults = [];
 			storyPerformance = [];
 			storyColors = {};
+			summarizedData = null;
 			return;
 		}
 
@@ -107,10 +114,60 @@
 			// Update story colors for visualization
 			storyColors = getStoryColors(storyPerformance);
 			console.log('Story colors:', storyColors);
+
+			// Calculate summarized data if direction is selected
+			if (filters.direction && filteredResults.length > 0) {
+				summarizedData = calculateSummarizedData(filteredResults, filters.direction);
+			} else {
+				summarizedData = null;
+			}
 		} else {
 			storyPerformance = [];
 			storyColors = {};
+			summarizedData = null;
 		}
+	}
+
+	// Calculate summarized data (max values for drift and N/N0)
+	function calculateSummarizedData(results: ResultRow[], direction: 'X' | 'Y') {
+		let maxDrift = 0;
+		let avgDrift = 0;
+		let maxNN0 = 0;
+		let avgNN0 = 0;
+
+		results.forEach((row) => {
+			// Get drift values based on selected direction
+			if (direction === 'X') {
+				if (row.Bina_max_x_drift !== undefined && row.Bina_max_x_drift > maxDrift) {
+					maxDrift = row.Bina_max_x_drift;
+				}
+				if (row.Bina_avg_x_drift !== undefined && row.Bina_avg_x_drift > avgDrift) {
+					avgDrift = row.Bina_avg_x_drift;
+				}
+			} else {
+				if (row.Bina_max_y_drift !== undefined && row.Bina_max_y_drift > maxDrift) {
+					maxDrift = row.Bina_max_y_drift;
+				}
+				if (row.Bina_avg_y_drift !== undefined && row.Bina_avg_y_drift > avgDrift) {
+					avgDrift = row.Bina_avg_y_drift;
+				}
+			}
+
+			// Get N/N0 values
+			if (row.Bina_max_n_n0 !== undefined && row.Bina_max_n_n0 > maxNN0) {
+				maxNN0 = row.Bina_max_n_n0;
+			}
+			if (row.Bina_avg_n_n0 !== undefined && row.Bina_avg_n_n0 > avgNN0) {
+				avgNN0 = row.Bina_avg_n_n0;
+			}
+		});
+
+		return {
+			maxDrift,
+			avgDrift,
+			maxNN0,
+			avgNN0
+		};
 	}
 
 	function resetView() {
@@ -257,7 +314,12 @@
 					<ResultsFilter on:filterChange={handleFilterChange} bind:filters />
 
 					{#if isFilterSelectionComplete(filters)}
-						<StoryPerformanceSummary {storyPerformance} performanceType={filters.performance} />
+						<StoryPerformanceSummary
+							{storyPerformance}
+							performanceType={filters.performance}
+							direction={filters.direction}
+							{summarizedData}
+						/>
 					{/if}
 
 					{#if isLoadingModel}
