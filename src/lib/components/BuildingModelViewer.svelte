@@ -3,11 +3,15 @@
 	// @ts-ignore
 	// For polygon triangulation - we'll use Earcut as it's reliable for complex polygons
 	import earcut from 'earcut';
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, createEventDispatcher } from 'svelte';
 	import * as THREE from 'three';
 	import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 	import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 	import { Font, FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
+
+	// Event dispatcher for component events
+	const dispatch = createEventDispatcher();
+
 	// Props
 	export let modelData: any = null; // The ModelInputData from the version
 	export let width: string = '100%';
@@ -21,6 +25,8 @@
 	let scene: THREE.Scene;
 	let camera: THREE.PerspectiveCamera;
 	let controls: OrbitControls;
+	let raycaster: THREE.Raycaster;
+	let mouse: THREE.Vector2;
 	let isInitialized = false;
 	let animationId: number;
 	let fontLoader: FontLoader;
@@ -34,6 +40,31 @@
 		beam: 30,
 		column: 40
 	};
+
+	// Selection and highlighting state
+	let selectedObject: THREE.Object3D | null = null;
+	let originalMaterial: THREE.Material | null = null;
+	let highlightMaterial = new THREE.MeshPhongMaterial({
+		color: 0xffff00, // Yellow highlight
+		transparent: true,
+		opacity: 0.9,
+		specular: 0xffffff,
+		shininess: 80,
+		depthWrite: true,
+		polygonOffset: true,
+		polygonOffsetFactor: -1,
+		polygonOffsetUnits: -1
+	});
+
+	// Properties panel state
+	let showProperties = false;
+	let selectedObjectProperties: any = {};
+	let selectedObjectType: string = '';
+
+	// Storey filter state
+	let storeyFilters: Record<string, boolean> = {};
+	let showStoreyFilter = false;
+	let storyLevels: { name: string; level: number }[] = [];
 
 	// Store the story name mapping (index to actual name)
 	let storyNameMapping: Record<string, string> = {};
@@ -242,6 +273,10 @@
 	function initScene() {
 		if (!container) return;
 
+		// Initialize raycaster and mouse
+		raycaster = new THREE.Raycaster();
+		mouse = new THREE.Vector2();
+
 		// Create renderer with improved quality and z-buffer configuration
 		renderer = new THREE.WebGLRenderer({
 			antialias: true,
@@ -309,11 +344,111 @@
 		controls.panSpeed = 0.7;
 		controls.screenSpacePanning = true;
 
+		// Add mouse event listeners for object selection
+		container.addEventListener('mousedown', onMouseDown);
+
 		loadFont();
 
 		isInitialized = true;
 		animate();
 		updateMaterialColors();
+	}
+
+	// Mouse down event handler for object selection
+	function onMouseDown(event: MouseEvent) {
+		// Calculate mouse position in normalized device coordinates
+		// (-1 to +1) for both components
+		const rect = container.getBoundingClientRect();
+		const x = event.clientX - rect.left;
+		const y = event.clientY - rect.top;
+
+		mouse.x = (x / container.clientWidth) * 2 - 1;
+		mouse.y = -(y / container.clientHeight) * 2 + 1;
+
+		// Update the raycaster with the mouse position and camera
+		raycaster.setFromCamera(mouse, camera);
+
+		// Get selectable objects to test for intersection
+		const selectableObjects: THREE.Object3D[] = [];
+
+		// Collect all beam, column, wall, and slab meshes
+		scene.traverse((object) => {
+			if (
+				object instanceof THREE.Mesh &&
+				(object.name.startsWith('Beam_') ||
+					object.name.startsWith('Column_') ||
+					object.name.startsWith('Wall_') ||
+					object.name.startsWith('Slab_'))
+			) {
+				// Only include objects from visible stories
+				const storyGroup = object.parent;
+				if (storyGroup && storyGroup.visible) {
+					selectableObjects.push(object);
+				}
+			}
+		});
+
+		// Find intersections
+		const intersects = raycaster.intersectObjects(selectableObjects);
+
+		if (intersects.length > 0) {
+			// Get the first intersected object
+			const intersectedObject = intersects[0].object;
+			selectObject(intersectedObject);
+		} else {
+			// If clicking on empty space, deselect current object
+			deselectObject();
+		}
+	}
+
+	// Select an object and show its properties
+	function selectObject(object: THREE.Object3D) {
+		// Deselect current object first
+		deselectObject();
+
+		// Set the new selected object
+		selectedObject = object;
+
+		// Store the original material to restore later
+		if (object instanceof THREE.Mesh) {
+			originalMaterial = object.material;
+			// Apply highlight material
+			object.material = highlightMaterial;
+
+			// Extract object properties
+			const objectName = object.name;
+			selectedObjectType = objectName.split('_')[0]; // e.g., "Beam", "Column", "Wall", "Slab"
+
+			// Get the userData from the object which contains the properties
+			selectedObjectProperties = object.userData;
+
+			// Show properties panel
+			showProperties = true;
+
+			// Notify parent component about selection
+			dispatch('objectSelected', {
+				type: selectedObjectType,
+				properties: selectedObjectProperties
+			});
+		}
+	}
+
+	// Deselect the current object
+	function deselectObject() {
+		if (selectedObject && originalMaterial) {
+			if (selectedObject instanceof THREE.Mesh) {
+				selectedObject.material = originalMaterial;
+			}
+
+			selectedObject = null;
+			originalMaterial = null;
+			showProperties = false;
+			selectedObjectProperties = {};
+			selectedObjectType = '';
+
+			// Notify parent component about deselection
+			dispatch('objectDeselected');
+		}
 	}
 
 	// Animation loop
@@ -358,6 +493,7 @@
 		B1: string | number;
 		B2: string | number;
 		Label: string;
+		IsSupported?: boolean;
 	}
 
 	interface Beam {
@@ -372,6 +508,8 @@
 		Nodes: string[];
 		Thickness: string | number;
 		Label: string;
+		CoatingLoad?: string | number;
+		LiveLoad?: string | number;
 	}
 
 	interface Spacing {
@@ -386,6 +524,7 @@
 		NodeJ: string;
 		Width: string | number;
 		Label: string;
+		IsSupported?: boolean;
 		Spacings?: Spacing[];
 		WallBeam?: string | number;
 		WallColumnStart?: string | number;
@@ -402,8 +541,61 @@
 		Label?: string; // The story label (name)
 	}
 
-	// Draw building axes with labels in bubbles
+	// Set camera to predefined views
+	export function setCubicView(viewType: 'top' | 'front' | 'side' | 'iso') {
+		if (!camera || !controls) return;
 
+		// Get the model center for camera targeting
+		const center = new THREE.Vector3(0, 0, 0);
+		const boundingBox = new THREE.Box3();
+
+		scene.traverse((object) => {
+			if (object instanceof THREE.Mesh) {
+				boundingBox.expandByObject(object);
+			}
+		});
+
+		boundingBox.getCenter(center);
+
+		// Calculate distance based on model size
+		const size = new THREE.Vector3();
+		boundingBox.getSize(size);
+		const maxDim = Math.max(size.x, size.y, size.z);
+		const fov = camera.fov * (Math.PI / 180);
+		let cameraDistance = Math.abs(maxDim / Math.sin(fov / 2)) * 1.2; // Add 20% for better view
+
+		// Set camera position based on view type
+		switch (viewType) {
+			case 'top': // Y-axis view (top-down)
+				camera.position.set(center.x, center.y + cameraDistance, center.z);
+				break;
+			case 'front': // Z-axis view
+				camera.position.set(center.x, center.y, center.z + cameraDistance);
+				break;
+			case 'side': // X-axis view
+				camera.position.set(center.x + cameraDistance, center.y, center.z);
+				break;
+			case 'iso': // Isometric view
+				camera.position.set(
+					center.x + cameraDistance * 0.7,
+					center.y + cameraDistance * 0.7,
+					center.z + cameraDistance * 0.7
+				);
+				break;
+		}
+
+		// Look at center of model
+		camera.lookAt(center);
+
+		// Update controls target
+		controls.target.copy(center);
+		controls.update();
+
+		// Render with new camera position
+		renderer.render(scene, camera);
+	}
+
+	// Draw building axes with labels in bubbles
 	function loadFont() {
 		fontLoader = new FontLoader();
 		// Use the Helvetica-like font - it's the standard sans-serif in Three.js
@@ -576,6 +768,39 @@
 		scene.add(sprite);
 	}
 
+	// Filter stories by setting visibility
+	export function filterStories(selectedStories: string[]) {
+		if (!scene) return;
+
+		// Find all story groups
+		const storyGroups = scene.children.filter((obj) => obj.name && obj.name.startsWith('Story_'));
+
+		// For each story group, set visibility based on filter
+		storyGroups.forEach((storyGroup) => {
+			const storyMatch = storyGroup.name.match(/^Story_(\d+)$/);
+			if (storyMatch) {
+				const storyIndex = parseInt(storyMatch[1]);
+				const storyName = storyNameMapping[`Story_${storyIndex}`] || '';
+
+				// Set visibility based on whether the story is in the selected list
+				storyGroup.visible = selectedStories.includes(storyName);
+			}
+		});
+
+		// Re-render the scene with the updated visibility
+		if (renderer && camera) {
+			renderer.render(scene, camera);
+		}
+
+		// If an object was selected and is now hidden, deselect it
+		if (selectedObject) {
+			const storyGroup = selectedObject.parent;
+			if (storyGroup && !storyGroup.visible) {
+				deselectObject();
+			}
+		}
+	}
+
 	// Parse and render the building model from modelData
 	function renderBuildingModel() {
 		if (!modelData || !scene) {
@@ -607,8 +832,10 @@
 
 			// Clear the story name mapping before rebuilding it
 			storyNameMapping = {};
+			storyLevels = [];
+			storeyFilters = {};
 
-			// Build the story name mapping
+			// Build the story name mapping and initialize story filters
 			stories.forEach((story: Story, storyIndex: number) => {
 				// Get the story name from the Label property if available
 				let storyName = '';
@@ -626,7 +853,19 @@
 				// Store the mapping from Story_index to actual story name
 				storyNameMapping[`Story_${storyIndex}`] = storyName;
 
-				console.log(`Mapping Story_${storyIndex} to "${storyName}"`);
+				// Calculate the story level (height from ground)
+				let level = 0;
+				for (let i = 0; i < storyIndex; i++) {
+					level += parseFloat(stories[i].Height as string);
+				}
+
+				// Add to story levels array
+				storyLevels.push({ name: storyName, level });
+
+				// Initialize story filter to visible
+				storeyFilters[storyName] = true;
+
+				console.log(`Mapping Story_${storyIndex} to "${storyName}" at level ${level}`);
 			});
 
 			// Render the building structure
@@ -754,6 +993,17 @@
 		mesh.rotation.y = angle;
 
 		mesh.name = `Beam_${Label}`;
+
+		// Store beam properties in userData for selection
+		mesh.userData = {
+			Label,
+			Width: width,
+			Depth: depth,
+			Length: length.toFixed(2),
+			NodeI: NodeI,
+			NodeJ: NodeJ
+		};
+
 		parent.add(mesh);
 	}
 
@@ -764,7 +1014,7 @@
 		storyHeight: string | number,
 		parent: THREE.Group
 	): void {
-		const { NodeID, B1, B2, Label } = column;
+		const { NodeID, B1, B2, Label, IsSupported = false } = column;
 
 		// Find the referenced node
 		const node = nodes.find((n) => n.ID === NodeID);
@@ -789,6 +1039,15 @@
 		);
 		mesh.name = `Column_${Label}`;
 
+		// Store column properties in userData for selection
+		mesh.userData = {
+			Label,
+			B1: width,
+			B2: depth,
+			Height: height,
+			IsSupported: IsSupported
+		};
+
 		parent.add(mesh);
 	}
 
@@ -800,7 +1059,7 @@
 		storyHeight: string | number,
 		parent: THREE.Group
 	): void {
-		const { Nodes: slabNodes, Thickness, Label } = slab;
+		const { Nodes: slabNodes, Thickness, Label, CoatingLoad = 0, LiveLoad = 0 } = slab;
 
 		if (!slabNodes || slabNodes.length < 3) return;
 
@@ -923,6 +1182,14 @@
 			mesh.renderOrder = zIndexLayers.slab;
 			mesh.name = `Slab_${Label}`;
 
+			// Store slab properties in userData for selection
+			mesh.userData = {
+				Label,
+				Thickness: thickness,
+				CoatingLoad: CoatingLoad,
+				LiveLoad: LiveLoad
+			};
+
 			parent.add(mesh);
 		} catch (error) {
 			console.error(`Error rendering slab ${Label}:`, error);
@@ -959,7 +1226,7 @@
 		storyHeight: string | number,
 		parent: THREE.Group
 	): void {
-		const { NodeI, NodeJ, Width, Label } = wall;
+		const { NodeI, NodeJ, Width, Label, IsSupported = false } = wall;
 
 		// Find the referenced nodes
 		const nodeI = nodes.find((n) => n.ID === NodeI);
@@ -1025,6 +1292,16 @@
 			mesh.rotation.y = angle;
 
 			mesh.name = `Wall_${Label}`;
+
+			// Store wall properties in userData for selection
+			mesh.userData = {
+				Label,
+				Width: width,
+				Length: length.toFixed(2),
+				Height: height,
+				IsSupported: IsSupported
+			};
+
 			parent.add(mesh);
 		} else {
 			// Complex wall with openings - use existing implementation
@@ -1043,7 +1320,7 @@
 		openings: Array<{ startX: number; endX: number; startY: number; endY: number }>,
 		parent: THREE.Group
 	): void {
-		const { Label } = wall;
+		const { Label, IsSupported = false } = wall;
 
 		const startX = parseFloat(nodeI.X as string);
 		const startZ = parseFloat(nodeI.Y as string);
@@ -1068,6 +1345,16 @@
 		const wallGroup = new THREE.Group();
 		wallGroup.name = `Wall_${Label}`;
 		wallGroup.renderOrder = zIndexLayers.wall;
+
+		// Store wall properties in userData for the group
+		wallGroup.userData = {
+			Label,
+			Width: width,
+			Length: length.toFixed(2),
+			Height: height,
+			IsSupported: IsSupported,
+			Openings: openings.length
+		};
 
 		// Create wall segments between openings
 		let currentX = 0;
@@ -1244,6 +1531,12 @@
 		const angle = Math.atan2(dirZ, dirX);
 		mesh.rotation.y = angle;
 
+		// Use the parent's name for this segment to make it part of the wall
+		mesh.name = parent.name + '_Segment';
+
+		// Copy the wall properties to each segment for selection
+		mesh.userData = { ...parent.userData, segmentLength, offsetX };
+
 		parent.add(mesh);
 	}
 
@@ -1288,6 +1581,15 @@
 			mesh.rotation.y = angle;
 
 			mesh.name = `WallBeam_${wall.Label}`;
+
+			// Store beam properties in userData for selection
+			mesh.userData = {
+				Label: wall.Label + '_Beam',
+				Width: width,
+				Depth: beamHeight,
+				Length: length.toFixed(2)
+			};
+
 			parent.add(mesh);
 		}
 
@@ -1310,6 +1612,15 @@
 			mesh.rotation.y = angle;
 
 			mesh.name = `WallColumnStart_${wall.Label}`;
+
+			// Store column properties in userData for selection
+			mesh.userData = {
+				Label: wall.Label + '_StartColumn',
+				Width: columnWidth,
+				Depth: width,
+				Height: height
+			};
+
 			parent.add(mesh);
 		}
 
@@ -1332,6 +1643,15 @@
 			mesh.rotation.y = angle;
 
 			mesh.name = `WallColumnEnd_${wall.Label}`;
+
+			// Store column properties in userData for selection
+			mesh.userData = {
+				Label: wall.Label + '_EndColumn',
+				Width: columnWidth,
+				Depth: width,
+				Height: height
+			};
+
 			parent.add(mesh);
 		}
 	}
@@ -1389,6 +1709,16 @@
 		centerCameraOnModel();
 	}
 
+	// Export the getStoryLevels method to allow parent to get story information
+	export function getStoryLevels() {
+		return storyLevels;
+	}
+
+	// Toggle properties panel visibility
+	export function togglePropertiesPanel() {
+		showProperties = !showProperties;
+	}
+
 	// Lifecycle methods
 	onMount(() => {
 		initScene();
@@ -1402,6 +1732,8 @@
 
 	onDestroy(() => {
 		window.removeEventListener('resize', handleResize);
+		container.removeEventListener('mousedown', onMouseDown);
+
 		if (animationId) {
 			cancelAnimationFrame(animationId);
 		}
@@ -1448,6 +1780,169 @@
 			<p>No building model data available</p>
 		</div>
 	{/if}
+
+	<!-- View Controls -->
+	<div class="view-controls">
+		<button class="view-button" on:click={() => setCubicView('top')} title="Top View">
+			<span class="material-icons">arrow_upward</span>
+		</button>
+		<button class="view-button" on:click={() => setCubicView('front')} title="Front View">
+			<span class="material-icons">arrow_forward</span>
+		</button>
+		<button class="view-button" on:click={() => setCubicView('side')} title="Side View">
+			<span class="material-icons">arrow_right_alt</span>
+		</button>
+		<button class="view-button" on:click={() => setCubicView('iso')} title="Isometric View">
+			<span class="material-icons">3d_rotation</span>
+		</button>
+		<button class="view-button" on:click={resetView} title="Reset View">
+			<span class="material-icons">restart_alt</span>
+		</button>
+	</div>
+
+	<!-- Story Filter Toggle -->
+	<div class="story-filter-toggle">
+		<button
+			class="filter-button"
+			on:click={() => (showStoreyFilter = !showStoreyFilter)}
+			title="Story Filters"
+		>
+			<span class="material-icons">{showStoreyFilter ? 'filter_list_off' : 'filter_list'}</span>
+		</button>
+	</div>
+
+	<!-- Story Filter Panel -->
+	{#if showStoreyFilter}
+		<div class="story-filter-panel">
+			<div class="filter-header">
+				<h3>Story Filters</h3>
+				<button class="close-button" on:click={() => (showStoreyFilter = false)}>
+					<span class="material-icons">close</span>
+				</button>
+			</div>
+			<div class="filter-options">
+				{#each storyLevels as story}
+					<label class="filter-option">
+						<input
+							type="checkbox"
+							bind:checked={storeyFilters[story.name]}
+							on:change={() => {
+								// Get all currently selected stories
+								const selectedStories = Object.entries(storeyFilters)
+									.filter(([_, isVisible]) => isVisible)
+									.map(([name]) => name);
+								// Apply the filter
+								filterStories(selectedStories);
+							}}
+						/>
+						<span>{story.name}</span>
+					</label>
+				{/each}
+			</div>
+		</div>
+	{/if}
+
+	<!-- Properties Panel -->
+	{#if showProperties && selectedObject}
+		<div class="properties-panel">
+			<div class="properties-header">
+				<h3>{selectedObjectType} Properties</h3>
+				<button class="close-button" on:click={deselectObject}>
+					<span class="material-icons">close</span>
+				</button>
+			</div>
+			<div class="properties-content">
+				{#if selectedObjectType === 'Beam'}
+					<div class="property">
+						<span class="property-label">Label:</span>
+						<span class="property-value">{selectedObjectProperties.Label || 'N/A'}</span>
+					</div>
+					<div class="property">
+						<span class="property-label">Width:</span>
+						<span class="property-value">{selectedObjectProperties.Width || 'N/A'} cm</span>
+					</div>
+					<div class="property">
+						<span class="property-label">Depth:</span>
+						<span class="property-value">{selectedObjectProperties.Depth || 'N/A'} cm</span>
+					</div>
+					<div class="property">
+						<span class="property-label">Length:</span>
+						<span class="property-value">{selectedObjectProperties.Length || 'N/A'} cm</span>
+					</div>
+				{:else if selectedObjectType === 'Column'}
+					<div class="property">
+						<span class="property-label">Label:</span>
+						<span class="property-value">{selectedObjectProperties.Label || 'N/A'}</span>
+					</div>
+					<div class="property">
+						<span class="property-label">B1:</span>
+						<span class="property-value">{selectedObjectProperties.B1 || 'N/A'} cm</span>
+					</div>
+					<div class="property">
+						<span class="property-label">B2:</span>
+						<span class="property-value">{selectedObjectProperties.B2 || 'N/A'} cm</span>
+					</div>
+					<div class="property">
+						<span class="property-label">Is Supported:</span>
+						<span class="property-value">{selectedObjectProperties.IsSupported ? 'Yes' : 'No'}</span
+						>
+					</div>
+				{:else if selectedObjectType === 'Wall'}
+					<div class="property">
+						<span class="property-label">Label:</span>
+						<span class="property-value">{selectedObjectProperties.Label || 'N/A'}</span>
+					</div>
+					<div class="property">
+						<span class="property-label">Width:</span>
+						<span class="property-value">{selectedObjectProperties.Width || 'N/A'} cm</span>
+					</div>
+					<div class="property">
+						<span class="property-label">Length:</span>
+						<span class="property-value">{selectedObjectProperties.Length || 'N/A'} cm</span>
+					</div>
+					<div class="property">
+						<span class="property-label">Is Supported:</span>
+						<span class="property-value">{selectedObjectProperties.IsSupported ? 'Yes' : 'No'}</span
+						>
+					</div>
+					{#if selectedObjectProperties.Openings}
+						<div class="property">
+							<span class="property-label">Openings:</span>
+							<span class="property-value">{selectedObjectProperties.Openings}</span>
+						</div>
+					{/if}
+				{:else if selectedObjectType === 'Slab'}
+					<div class="property">
+						<span class="property-label">Label:</span>
+						<span class="property-value">{selectedObjectProperties.Label || 'N/A'}</span>
+					</div>
+					<div class="property">
+						<span class="property-label">Thickness:</span>
+						<span class="property-value">{selectedObjectProperties.Thickness || 'N/A'} cm</span>
+					</div>
+					<div class="property">
+						<span class="property-label">Coating Load:</span>
+						<span class="property-value">{selectedObjectProperties.CoatingLoad || '0'} kN/m²</span>
+					</div>
+					<div class="property">
+						<span class="property-label">Live Load:</span>
+						<span class="property-value">{selectedObjectProperties.LiveLoad || '0'} kN/m²</span>
+					</div>
+				{:else}
+					<div class="property">
+						<span class="property-label">Type:</span>
+						<span class="property-value">{selectedObjectType}</span>
+					</div>
+					{#each Object.entries(selectedObjectProperties) as [key, value]}
+						<div class="property">
+							<span class="property-label">{key}:</span>
+							<span class="property-value">{value}</span>
+						</div>
+					{/each}
+				{/if}
+			</div>
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -1473,6 +1968,212 @@
 		color: #64748b;
 		font-size: 0.9rem;
 		text-align: center;
+	}
+
+	/* View Controls */
+	.view-controls {
+		position: absolute;
+		top: 10px;
+		left: 10px;
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+		z-index: 100;
+	}
+
+	.view-button {
+		width: 32px;
+		height: 32px;
+		border-radius: 4px;
+		background-color: rgba(255, 255, 255, 0.9);
+		border: 1px solid #ddd;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		transition: all 0.2s;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+	}
+
+	.view-button:hover {
+		background-color: rgba(255, 255, 255, 1);
+		transform: translateY(-1px);
+		box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+	}
+
+	.view-button .material-icons {
+		font-size: 16px;
+		color: #333;
+	}
+
+	/* Story Filter Toggle */
+	.story-filter-toggle {
+		position: absolute;
+		top: 10px;
+		right: 10px;
+		z-index: 100;
+	}
+
+	.filter-button {
+		width: 32px;
+		height: 32px;
+		border-radius: 4px;
+		background-color: rgba(255, 255, 255, 0.9);
+		border: 1px solid #ddd;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		transition: all 0.2s;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+	}
+
+	.filter-button:hover {
+		background-color: rgba(255, 255, 255, 1);
+		transform: translateY(-1px);
+		box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+	}
+
+	.filter-button .material-icons {
+		font-size: 16px;
+		color: #333;
+	}
+
+	/* Story Filter Panel */
+	.story-filter-panel {
+		position: absolute;
+		top: 50px;
+		right: 10px;
+		background-color: white;
+		border-radius: 8px;
+		box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+		width: 200px;
+		z-index: 100;
+		overflow: hidden;
+	}
+
+	.filter-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 8px 12px;
+		background-color: #f1f5f9;
+		border-bottom: 1px solid #e2e8f0;
+	}
+
+	.filter-header h3 {
+		margin: 0;
+		font-size: 14px;
+		font-weight: 600;
+		color: #334155;
+	}
+
+	.close-button {
+		width: 24px;
+		height: 24px;
+		border-radius: 4px;
+		background-color: transparent;
+		border: none;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		transition: background-color 0.2s;
+	}
+
+	.close-button:hover {
+		background-color: rgba(0, 0, 0, 0.05);
+	}
+
+	.close-button .material-icons {
+		font-size: 18px;
+		color: #64748b;
+	}
+
+	.filter-options {
+		padding: 8px;
+		max-height: 300px;
+		overflow-y: auto;
+	}
+
+	.filter-option {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 8px;
+		cursor: pointer;
+		border-radius: 4px;
+		transition: background-color 0.2s;
+	}
+
+	.filter-option:hover {
+		background-color: #f1f5f9;
+	}
+
+	.filter-option input {
+		cursor: pointer;
+	}
+
+	.filter-option span {
+		font-size: 14px;
+		color: #334155;
+	}
+
+	/* Properties Panel */
+	.properties-panel {
+		position: absolute;
+		bottom: 10px;
+		right: 10px;
+		background-color: white;
+		border-radius: 8px;
+		box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+		width: 250px;
+		z-index: 100;
+		overflow: hidden;
+	}
+
+	.properties-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 8px 12px;
+		background-color: #f1f5f9;
+		border-bottom: 1px solid #e2e8f0;
+	}
+
+	.properties-header h3 {
+		margin: 0;
+		font-size: 14px;
+		font-weight: 600;
+		color: #334155;
+	}
+
+	.properties-content {
+		padding: 12px;
+		max-height: 300px;
+		overflow-y: auto;
+	}
+
+	.property {
+		display: flex;
+		justify-content: space-between;
+		padding: 4px 0;
+		border-bottom: 1px solid #f1f5f9;
+	}
+
+	.property:last-child {
+		border-bottom: none;
+	}
+
+	.property-label {
+		font-size: 13px;
+		font-weight: 500;
+		color: #64748b;
+	}
+
+	.property-value {
+		font-size: 13px;
+		color: #334155;
 	}
 
 	:global(:fullscreen) .building-model-container {
