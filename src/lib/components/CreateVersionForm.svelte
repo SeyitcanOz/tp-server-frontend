@@ -2,22 +2,23 @@
 	import { createEventDispatcher, onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { fade, fly, scale } from 'svelte/transition';
-	import { cubicOut } from 'svelte/easing'; // Added missing import
+	import { cubicOut } from 'svelte/easing';
 	import FileDropzone from './FileDropZone.svelte';
 	import api from '$lib/services/api';
-	import projectService from '$lib/services/project';
+	import versionService from '$lib/services/version';
+	import type { ProjectVersion } from '$lib/types/version';
 	import type { ProjectDetail } from '$lib/types/project';
 
 	// Props
 	export let isOpen = false;
+	export let projectId: string;
+	export let projectDetail: ProjectDetail | null = null;
 
 	// Form state
-	let projectName = '';
-	let modellingTypes = ['RC']; // Array with default RC selected
 	let isSubmitting = false;
 	let error: string | null = null;
 	let success = false;
-	let createdProject: ProjectDetail | null = null;
+	let createdVersion: ProjectVersion | null = null;
 	let formElement: HTMLFormElement;
 
 	// File state
@@ -43,8 +44,8 @@
 
 	const dispatch = createEventDispatcher<{
 		close: void;
-		projectCreated: { project: ProjectDetail };
-		refreshProjects: void;
+		versionCreated: { version: ProjectVersion };
+		refreshProject: void;
 	}>();
 
 	function handleClose() {
@@ -91,28 +92,9 @@
 		// Reset error
 		error = null;
 
-		// Validate project name
-		if (!projectName.trim()) {
-			return { valid: false, error: 'Project name is required' };
-		}
-
-		// Check if the project name follows the required format
-		if (!/^\d{2}-\d{2}-M\d{2}-\d{2}(-[A-Z])?$/.test(projectName)) {
-			return {
-				valid: false,
-				error:
-					'Project name must follow format: XX-XX-MXX-XX (e.g. 02-30-M02-01) or XX-XX-MXX-XX-X (e.g. 02-30-M02-01-A)'
-			};
-		}
-
 		// Validate required files
 		if (!projectFile) {
 			return { valid: false, error: 'Project.json file is required' };
-		}
-
-		// Validate at least one modelling type is selected
-		if (modellingTypes.length === 0) {
-			return { valid: false, error: 'At least one modelling type must be selected' };
 		}
 
 		return { valid: true, error: null };
@@ -128,13 +110,12 @@
 		isSubmitting = true;
 		error = null;
 		success = false;
-		createdProject = null;
+		createdVersion = null;
 
 		try {
 			// Create a FormData object to send the files
 			const formData = new FormData();
-			formData.append('projectName', projectName);
-			formData.append('modellingType', modellingTypes[0]); // Using first selected type
+			formData.append('projectId', projectId);
 
 			// Append files if they exist
 			if (projectFile) {
@@ -153,14 +134,14 @@
 				formData.append('files', resultsFile);
 			}
 
-			const response = await api.post('/api/upload/project', formData, {
+			const response = await api.post('/api/upload/version/' + projectId, formData, {
 				headers: {
 					'Content-Type': 'multipart/form-data'
 				}
 			});
 
-			// Store the created project
-			createdProject = response.data;
+			// Store the created version
+			createdVersion = response.data;
 
 			// Set success state
 			success = true;
@@ -168,12 +149,12 @@
 			// Note: We're NOT resetting isSubmitting here
 			// This is crucial for maintaining the success card state
 
-			// Notify parent that a project was created (even if user stays on page)
-			if (createdProject) {
-				dispatch('projectCreated', { project: createdProject });
+			// Notify parent that a version was created (even if user stays on page)
+			if (createdVersion) {
+				dispatch('versionCreated', { version: createdVersion });
 			}
 		} catch (err) {
-			console.error('Error creating project:', err);
+			console.error('Error creating version:', err);
 
 			if (err && typeof err === 'object' && 'response' in err) {
 				const axiosError = err as { response?: { data?: string | { message?: string } } };
@@ -182,12 +163,12 @@
 				} else if (typeof axiosError.response?.data === 'object') {
 					error =
 						axiosError.response.data.message ||
-						'Failed to create project. Please check your files and try again.';
+						'Failed to create version. Please check your files and try again.';
 				} else {
-					error = 'Failed to create project. Please check your files and try again.';
+					error = 'Failed to create version. Please check your files and try again.';
 				}
 			} else {
-				error = 'Failed to create project. Please check your files and try again.';
+				error = 'Failed to create version. Please check your files and try again.';
 			}
 
 			isSubmitting = false;
@@ -197,8 +178,6 @@
 	function resetForm() {
 		if (isSubmitting) return;
 
-		projectName = '';
-		modellingTypes = ['RC']; // Reset to default with RC selected
 		projectFile = null;
 		modelInfoFile = null;
 		modelFile = null;
@@ -206,28 +185,28 @@
 		resultsFile = null;
 		error = null;
 		success = false;
-		createdProject = null;
+		createdVersion = null;
 	}
 
-	// Handle success option: View project
-	function viewProject() {
-		if (!createdProject) return;
-		goto(`/projects/${createdProject.id}`);
+	// Handle success option: View version
+	function viewVersion() {
+		if (!createdVersion) return;
+		goto(`/projects/${projectId}/versions/${createdVersion.versionNumber}`);
 	}
 
-	// Handle success option: Create another project
+	// Handle success option: Create another version
 	function createAnother() {
 		// Notify parent to refresh project list
-		dispatch('refreshProjects');
+		dispatch('refreshProject');
 		// Reset all state
 		isSubmitting = false; // This needs to be set before resetForm() is called
 		resetForm();
 	}
 
-	// Handle success option: Close and return to projects
+	// Handle success option: Close and return to project
 	function closeAndRefresh() {
 		// Notify parent to refresh project list
-		dispatch('refreshProjects');
+		dispatch('refreshProject');
 		// Close modal
 		handleClose();
 	}
@@ -280,14 +259,14 @@
 		<div class="form-container" in:fly={{ y: 20, duration: 300, easing: cubicOut }}>
 			<div class="form-card">
 				<!-- The header part that changes based on success status -->
-				{#if success && createdProject}
+				{#if success && createdVersion}
 					<div class="form-header success-header" in:fly={{ y: -10, duration: 300 }}>
 						<div class="header-icon">
 							<span class="material-icons">check_circle</span>
 						</div>
 						<div class="header-text">
-							<h1>Project Created Successfully</h1>
-							<p class="header-subtitle">Your project has been successfully created</p>
+							<h1>Version Created Successfully</h1>
+							<p class="header-subtitle">Your project version has been successfully created</p>
 						</div>
 						<button
 							class="close-btn"
@@ -307,9 +286,13 @@
 							<span class="material-icons">add_circle</span>
 						</div>
 						<div class="header-text">
-							<h1>Create New Project</h1>
+							<h1>Create New Version</h1>
 							<p class="header-subtitle">
-								Upload project files to create a new engineering project
+								{#if projectDetail}
+									Upload files for a new version of {projectDetail.projectName}
+								{:else}
+									Upload project files to create a new version
+								{/if}
 							</p>
 						</div>
 						<button
@@ -334,22 +317,24 @@
 						</div>
 					{/if}
 
-					{#if success && createdProject}
+					{#if success && createdVersion}
 						<div class="success-details" in:scale={{ start: 0.98, duration: 300 }}>
 							<div class="detail-item">
-								<span class="label">Project Name:</span>
-								<span class="value">{createdProject.projectName}</span>
+								<span class="label">Project:</span>
+								<span class="value"
+									>{projectDetail ? projectDetail.projectName : 'Current project'}</span
+								>
 							</div>
 							<div class="detail-item">
-								<span class="label">Modelling Type:</span>
-								<span class="value">{createdProject.modellingType}</span>
+								<span class="label">Version Number:</span>
+								<span class="value">{createdVersion.versionNumber}</span>
 							</div>
 
 							<div class="success-check" in:scale={{ delay: 300, duration: 400 }}>
 								<div class="check-circle">
 									<span class="material-icons">check</span>
 								</div>
-								<p>Project created successfully!</p>
+								<p>Version created successfully!</p>
 							</div>
 						</div>
 
@@ -371,61 +356,14 @@
 									<span class="material-icons">add_circle</span>
 									<span>Create Another</span>
 								</button>
-								<button type="button" class="btn-success" on:click={viewProject}>
+								<button type="button" class="btn-success" on:click={viewVersion}>
 									<span class="material-icons">visibility</span>
-									<span>View Project</span>
+									<span>View Version</span>
 								</button>
 							</div>
 						</div>
 					{:else}
 						<form on:submit|preventDefault={handleSubmit} bind:this={formElement}>
-							<div class="form-section" in:fly={{ y: 10, duration: 200 }}>
-								<h2>Project Details</h2>
-								<div class="form-row">
-									<div class="form-group required-field">
-										<label for="projectName"
-											>Project Name <span class="required-indicator">*</span></label
-										>
-										<div class="input-with-icon">
-											<span class="material-icons input-icon">badge</span>
-											<input
-												type="text"
-												id="projectName"
-												bind:value={projectName}
-												placeholder="Enter project name (e.g. 02-30-M02-01)"
-												disabled={isSubmitting}
-											/>
-										</div>
-										<div class="help-text">
-											Format: XX-XX-MXX-XX (e.g. 02-30-M02-01) or XX-XX-MXX-XX-X (e.g.
-											02-30-M02-01-A)
-										</div>
-									</div>
-
-									<div class="form-group type-group required-field">
-										<label>Modelling Types <span class="required-indicator">*</span></label>
-										<div class="toggle-container">
-											<button
-												type="button"
-												class="toggle-button {modellingTypes.includes('RC') ? 'active' : ''}"
-												on:click={() => (modellingTypes = ['RC'])}
-												disabled={isSubmitting}
-											>
-												RC
-											</button>
-											<button
-												type="button"
-												class="toggle-button {modellingTypes.includes('Masonry') ? 'active' : ''}"
-												on:click={() => (modellingTypes = ['Masonry'])}
-												disabled={isSubmitting}
-											>
-												Masonry
-											</button>
-										</div>
-									</div>
-								</div>
-							</div>
-
 							<!-- Project Files -->
 							<div class="form-section" in:fly={{ y: 10, duration: 200, delay: 100 }}>
 								<h2>Project Files</h2>
@@ -788,81 +726,6 @@
 		font-weight: 600;
 	}
 
-	.form-row {
-		display: flex;
-		gap: 1.25rem;
-		margin-bottom: 0.75rem;
-		align-items: flex-start;
-	}
-
-	.form-group {
-		flex: 2;
-		display: flex;
-		flex-direction: column;
-		gap: 0.35rem;
-	}
-
-	.type-group {
-		flex: 1;
-	}
-
-	label {
-		font-size: 0.8rem;
-		font-weight: 500;
-		color: #334155;
-	}
-
-	.required-indicator {
-		color: #ef4444;
-	}
-
-	.input-with-icon {
-		position: relative;
-		display: flex;
-		align-items: center;
-	}
-
-	.input-icon {
-		position: absolute;
-		left: 0.75rem;
-		top: 50%;
-		transform: translateY(-50%);
-		color: #64748b;
-		font-size: 0.9rem;
-	}
-
-	input[type='text'] {
-		width: 100%;
-		padding: 0 0.75rem 0 2.25rem; /* Maintain consistent horizontal padding */
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		font-size: 0.85rem;
-		background-color: #f8fafc;
-		transition: all 0.2s;
-		height: 38px; /* Fixed height */
-		box-sizing: border-box; /* Important for consistent sizing */
-		display: flex;
-		align-items: center; /* Center content vertically */
-	}
-
-	input[type='text']:focus {
-		outline: none;
-		border-color: #3b82f6;
-		background-color: white;
-		box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-	}
-
-	.help-text {
-		font-size: 0.7rem;
-		color: #64748b;
-		margin-top: 0.2rem;
-	}
-
-	.required-field {
-		border-left: 3px solid #3b82f6;
-		padding-left: 0.5rem;
-	}
-
 	/* File Upload Container */
 	.dropzones-container {
 		display: flex;
@@ -876,52 +739,6 @@
 
 	.file-upload-section:hover {
 		transform: translateY(-2px);
-	}
-
-	/* Toggle Button Styles */
-	.toggle-container {
-		display: flex;
-		width: 100%;
-		height: 38px;
-		border: 1px solid #cbd5e1;
-		border-radius: 6px;
-		overflow: hidden;
-	}
-
-	.toggle-button {
-		flex: 1;
-		height: 100%;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background-color: #f8fafc;
-		border: none;
-		font-size: 0.75rem;
-		color: #334155;
-		cursor: pointer;
-		transition: all 0.2s;
-		padding: 0;
-		margin: 0;
-		position: relative;
-	}
-
-	.toggle-button:first-child {
-		border-right: 1px solid #cbd5e1;
-	}
-
-	.toggle-button.active {
-		background: linear-gradient(135deg, #4a89e8 0%, #5c9fff 100%);
-		color: white;
-		font-weight: bold;
-	}
-
-	.toggle-button:hover:not(.active):not(:disabled) {
-		background-color: #e2e8f0;
-	}
-
-	.toggle-button:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
 	}
 
 	/* Form Actions */
@@ -1059,11 +876,6 @@
 		.overlay {
 			align-items: flex-start;
 			padding: 1rem 0.5rem;
-		}
-
-		.form-row {
-			flex-direction: column;
-			gap: 1rem;
 		}
 
 		.form-actions {

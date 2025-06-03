@@ -1,4 +1,3 @@
-<!-- src/lib/components/BuildingModelViewer.svelte -->
 <script lang="ts">
 	// @ts-ignore
 	// For polygon triangulation - we'll use Earcut as it's reliable for complex polygons
@@ -8,6 +7,9 @@
 	import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 	import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 	import { Font, FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
+	import { EdgesGeometry, LineSegments } from 'three';
+	import BuildingTreeView from './BuildingTreeView.svelte';
+	import BuildingPropertiesPanel from './BuildingPropertiesPanel.svelte';
 
 	// Event dispatcher for component events
 	const dispatch = createEventDispatcher();
@@ -23,7 +25,9 @@
 	let container: HTMLElement;
 	let renderer: THREE.WebGLRenderer;
 	let scene: THREE.Scene;
-	let camera: THREE.PerspectiveCamera;
+	let camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
+	let perspectiveCamera: THREE.PerspectiveCamera;
+	let orthographicCamera: THREE.OrthographicCamera;
 	let controls: OrbitControls;
 	let raycaster: THREE.Raycaster;
 	let mouse: THREE.Vector2;
@@ -32,14 +36,29 @@
 	let fontLoader: FontLoader;
 	let isFontLoaded = false;
 	let defaultFont: Font | null = null;
+
+	// View mode state
+	let is2DMode = false;
+	let viewModeText = '2D';
+
+	// Controls panel state
+	let isControlsPanelOpen = false;
+	let savedStoryVisibility: Record<string, boolean> = {};
+
+	// Rendering order follows the eMemberType2D priority
 	let zIndexLayers = {
 		grid: 0,
 		axes: 5,
-		slab: 15,
-		wall: 20,
-		beam: 30,
-		column: 40
+		slab: 1, // Lowest priority
+		beam: 2,
+		wall: 3,
+		masonryWall: 5, // Not used currently but added for completeness
+		column: 6, // Highest priority
+		edges: 10 // Edge borders on top of everything
 	};
+
+	// Reference to the ViewCube component
+	let viewCubeRef: any;
 
 	// Selection and highlighting state
 	let selectedObject: THREE.Object3D | null = null;
@@ -61,6 +80,19 @@
 	let selectedObjectProperties: any = {};
 	let selectedObjectType: string = '';
 
+	// Tree View panel state
+	let isTreeViewVisible = true;
+	let treeViewWidth = '250px';
+	let treeViewRef: any;
+
+	function toggleTreeView() {
+		if (isTreeViewVisible) {
+			isTreeViewVisible = false;
+		} else {
+			isTreeViewVisible = true;
+		}
+	}
+
 	// Storey filter state
 	let storeyFilters: Record<string, boolean> = {};
 	let showStoreyFilter = false;
@@ -69,15 +101,28 @@
 	// Store the story name mapping (index to actual name)
 	let storyNameMapping: Record<string, string> = {};
 
+	// Fullscreen state
+	let isFullscreen = false;
+
+	// Edge material for 2D mode borders
+	const edgeMaterial = new THREE.LineBasicMaterial({
+		color: 0x000000, // Black
+		linewidth: 1
+	});
+
+	// Keep track of edge objects to toggle visibility
+	const edgeObjects: THREE.LineSegments[] = [];
+
 	// Materials for different structural elements with improved quality and z-fighting prevention
+	// Restored to original colors
 	const defaultMaterials = {
 		column: new THREE.MeshPhongMaterial({
-			color: 0x5472d3, // Steel blue for columns - more professional
+			color: 0x517891, // Steel blue for columns - more professional
 			transparent: false, // Columns remain opaque
 			specular: 0x999999,
 			shininess: 60,
 			flatShading: false,
-			depthWrite: true,
+			// depthWrite: true,
 			polygonOffset: true,
 			polygonOffsetFactor: 1,
 			polygonOffsetUnits: 1
@@ -85,11 +130,10 @@
 		beam: new THREE.MeshPhongMaterial({
 			color: 0x2e8b57, // Sea green for beams - richer color
 			transparent: false,
-			// opacity: 0.,
 			specular: 0x888888,
 			shininess: 55,
 			flatShading: false,
-			depthWrite: true, // Changed to false for transparent objects
+			// depthWrite: true,
 			depthTest: true,
 			polygonOffset: true,
 			polygonOffsetFactor: -1,
@@ -98,8 +142,8 @@
 		slab: new THREE.MeshPhongMaterial({
 			color: 0xcccccc, // Lighter gray for slabs
 			transparent: false,
-			// opacity: 0.9, // More transparent
 			specular: 0x777777,
+			// opacity: 0.5,
 			shininess: 40,
 			flatShading: true,
 			side: THREE.DoubleSide,
@@ -151,6 +195,64 @@
 
 	// Created a copy of the materials for the current rendering
 	let materials = { ...defaultMaterials };
+
+	// Add borders to a mesh (used for 2D mode)
+	function addBorders(mesh: THREE.Mesh) {
+		// Create an edges geometry from the mesh's geometry
+		const edgesGeometry = new EdgesGeometry(mesh.geometry);
+
+		// Create a line segments object with the edges geometry
+		const edges = new LineSegments(edgesGeometry, edgeMaterial);
+
+		// Copy the mesh's position, rotation, and scale
+		edges.position.copy(mesh.position);
+		edges.rotation.copy(mesh.rotation);
+		edges.scale.copy(mesh.scale);
+
+		// Set a higher render order to ensure borders appear on top
+		edges.renderOrder = zIndexLayers.edges;
+
+		// Add a reference to the original mesh for easier updates
+		(edges as any).originalMesh = mesh;
+
+		// Add the edges to the scene
+		mesh.parent?.add(edges);
+
+		// Store the edges object in our array for toggling later
+		edgeObjects.push(edges);
+
+		// Return the edges object in case it's needed
+		return edges;
+	}
+
+	// Update borders for all objects (used when toggling 2D/3D mode)
+	function updateBorders(show: boolean) {
+		// First remove any existing edge objects
+		for (const edge of edgeObjects) {
+			if (edge.parent) {
+				edge.parent.remove(edge);
+			}
+		}
+
+		// Clear the array
+		edgeObjects.length = 0;
+
+		// If we need to show borders (2D mode), add them to all visible meshes
+		if (show) {
+			scene.traverse((object) => {
+				if (
+					object instanceof THREE.Mesh &&
+					object.visible &&
+					(object.name.startsWith('Beam_') ||
+						object.name.startsWith('Column_') ||
+						object.name.startsWith('Wall_') ||
+						object.name.startsWith('Slab_'))
+				) {
+					addBorders(object);
+				}
+			});
+		}
+	}
 
 	export function updateMaterialColors(newStoryColors?: Record<string, string>) {
 		// Allow calling with or without parameters for backward compatibility
@@ -281,8 +383,9 @@
 		renderer = new THREE.WebGLRenderer({
 			antialias: true,
 			alpha: true,
-			logarithmicDepthBuffer: true, // Crucial for z-fighting prevention
-			precision: 'highp'
+			logarithmicDepthBuffer: false, // Crucial for z-fighting prevention
+			precision: 'highp',
+			powerPreference: 'high-performance'
 		});
 
 		// Additional renderer settings to improve rendering quality and reduce artifacts
@@ -291,7 +394,7 @@
 		renderer.setSize(container.clientWidth, container.clientHeight);
 		renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 		renderer.shadowMap.enabled = true;
-		renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+		renderer.shadowMap.type = THREE.PCFShadowMap;
 
 		container.appendChild(renderer.domElement);
 
@@ -299,19 +402,37 @@
 		scene = new THREE.Scene();
 		scene.background = new THREE.Color(0xffffff);
 
-		// Create camera with improved near/far plane settings
+		// Create perspective camera with improved near/far plane settings
 		const aspect = container.clientWidth / container.clientHeight;
-		camera = new THREE.PerspectiveCamera(45, aspect, 5, 9999999999); // Adjusted near plane for better precision
-		camera.position.set(500, 500, 500);
-		camera.lookAt(0, 0, 0);
+		perspectiveCamera = new THREE.PerspectiveCamera(45, aspect, 1, 100000); // Adjusted near plane for better precision
+		perspectiveCamera.position.set(500, 500, 500);
+		perspectiveCamera.lookAt(0, 0, 0);
+
+		// Create orthographic camera for 2D mode
+		const frustumSize = 1000;
+		const aspectRatio = container.clientWidth / container.clientHeight;
+		orthographicCamera = new THREE.OrthographicCamera(
+			(frustumSize * aspectRatio) / -2,
+			(frustumSize * aspectRatio) / 2,
+			frustumSize / 2,
+			frustumSize / -2,
+			1,
+			10000
+		);
+		orthographicCamera.position.set(0, 1000, 0); // Position directly above
+		orthographicCamera.lookAt(0, 0, 0);
+		orthographicCamera.up.set(0, 0, -1); // Set up vector to match 2D plan view orientation
+
+		// Start with perspective camera as default
+		camera = perspectiveCamera;
 
 		// Add lights for better quality
 		// Ambient light for base illumination
-		const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); // Increased ambient light
+		const ambientLight = new THREE.AmbientLight(0xffffff, 1); // Increased ambient light
 		scene.add(ambientLight);
 
 		// Main directional light with shadows
-		const directionalLight = new THREE.DirectionalLight(0xffffff, 0.7);
+		const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
 		directionalLight.position.set(200, 500, 300);
 		directionalLight.castShadow = true;
 		directionalLight.shadow.mapSize.width = 2048;
@@ -326,12 +447,12 @@
 		scene.add(directionalLight);
 
 		// Add back light and fill light for better 3D definition
-		const backLight = new THREE.DirectionalLight(0xffffff, 0.4);
+		const backLight = new THREE.DirectionalLight(0xffffff, 1);
 		backLight.position.set(-200, 200, -200);
 		scene.add(backLight);
 
 		// Add fill light
-		const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+		const fillLight = new THREE.DirectionalLight(0xffffff, 1);
 		fillLight.position.set(-100, 100, 200);
 		scene.add(fillLight);
 
@@ -354,10 +475,199 @@
 		updateMaterialColors();
 	}
 
+	// Toggle between 2D and 3D view modes
+	function toggleViewMode() {
+		// Save current state before changing modes
+		if (is2DMode) {
+			// Switching from 2D to 3D - restore saved visibility
+			if (Object.keys(savedStoryVisibility).length > 0) {
+				// Restore the previous 3D visibility state
+				storeyFilters = { ...savedStoryVisibility };
+
+				// Apply the restored filters
+				const visibleStories = Object.entries(storeyFilters)
+					.filter(([_, isVisible]) => isVisible)
+					.map(([name]) => name);
+
+				filterStories(visibleStories);
+			} else {
+				// If no saved state (first time switching), make all stories visible in 3D
+				Object.keys(storeyFilters).forEach((name) => {
+					storeyFilters[name] = true;
+				});
+
+				filterStories(Object.keys(storeyFilters));
+			}
+		} else {
+			// Switching from 3D to 2D - save current visibility
+			savedStoryVisibility = { ...storeyFilters };
+
+			// In 2D mode, ensure only one story is visible
+			handleStoryVisibilityFor2D();
+		}
+
+		// Toggle the mode
+		is2DMode = !is2DMode;
+		viewModeText = is2DMode ? '3D' : '2D';
+
+		if (is2DMode) {
+			// Switch to 2D mode (orthographic camera)
+			camera = orthographicCamera;
+
+			// Position camera for top-down view
+			camera.position.set(0, 1000, 0);
+			camera.lookAt(0, 0, 0);
+
+			// Disable rotation for 2D mode
+			controls.enableRotate = false;
+
+			// Update controls to use orthographic camera
+			controls.object = camera;
+
+			// Reset controls
+			controls.update();
+
+			// Add borders to all objects in 2D mode
+			updateBorders(true);
+		} else {
+			// Switch back to 3D mode (perspective camera)
+			camera = perspectiveCamera;
+
+			// Enable rotation for 3D mode
+			controls.enableRotate = true;
+
+			// Update controls to use perspective camera
+			controls.object = camera;
+
+			// Reset to isometric view
+			setCubicView('iso');
+
+			// Remove borders when switching back to 3D mode
+			updateBorders(false);
+		}
+
+		// Center and fit model to view
+		centerCameraOnModel();
+	}
+
+	// Helper function to ensure only one story is visible in 2D mode
+	function handleStoryVisibilityFor2D() {
+		if (!is2DMode) return;
+
+		// Get all story names
+		const storyNames = Object.keys(storeyFilters);
+
+		// Count how many stories are currently visible
+		const visibleStories = storyNames.filter((name) => storeyFilters[name]);
+
+		// If there's exactly one story visible, we're good
+		if (visibleStories.length === 1) return;
+
+		// Otherwise, make all stories invisible first
+		storyNames.forEach((name) => (storeyFilters[name] = false));
+
+		// Then make only the first story visible
+		if (storyNames.length > 0) {
+			storeyFilters[storyNames[0]] = true;
+			// Apply the filter
+			filterStories([storyNames[0]]);
+		}
+	}
+
+	function toggleStoryVisibility(storyName: string) {
+		// In 2D mode, we select a single story
+		if (is2DMode) {
+			// Make all stories invisible first
+			Object.keys(storeyFilters).forEach((name) => {
+				storeyFilters[name] = false;
+			});
+
+			// Then make only the selected story visible
+			storeyFilters[storyName] = true;
+
+			// Apply the filter
+			filterStories([storyName]);
+		} else {
+			// In 3D mode, toggle the visibility of the selected story
+			storeyFilters[storyName] = !storeyFilters[storyName];
+
+			// Get all currently selected stories
+			const selectedStories = Object.entries(storeyFilters)
+				.filter(([_, isVisible]) => isVisible)
+				.map(([name]) => name);
+
+			// Apply the filter
+			filterStories(selectedStories);
+		}
+	}
+
+	function selectStoryInTreeView(storyName: string) {
+		if (is2DMode) {
+			// In 2D mode, only show the selected story
+			const storyNames = Object.keys(storeyFilters);
+
+			// Make all stories invisible first
+			storyNames.forEach((name) => (storeyFilters[name] = false));
+
+			// Then make only the selected story visible
+			storeyFilters[storyName] = true;
+
+			// Apply the filter
+			filterStories([storyName]);
+		} else {
+			// In 3D mode, toggle visibility of the selected story
+			storeyFilters[storyName] = !storeyFilters[storyName];
+
+			// Get all currently visible stories
+			const visibleStories = Object.entries(storeyFilters)
+				.filter(([_, isVisible]) => isVisible)
+				.map(([name]) => name);
+
+			// Apply the filter
+			filterStories(visibleStories);
+		}
+	}
+
+	// Toggle fullscreen mode
+	function toggleFullscreen() {
+		if (!container) return;
+
+		if (!isFullscreen) {
+			if (container.requestFullscreen) {
+				container.requestFullscreen();
+			}
+		} else {
+			if (document.exitFullscreen) {
+				document.exitFullscreen();
+			}
+		}
+	}
+
+	// Handle fullscreen change events
+	function handleFullscreenChange() {
+		isFullscreen = !!document.fullscreenElement;
+
+		// Resize the viewer if fullscreen state changed
+		setTimeout(handleResize, 100);
+
+		// Force re-render if we have a scene
+		if (scene && camera && renderer) {
+			renderer.render(scene, camera);
+		}
+	}
+
+	// Toggle the controls panel visibility
+	function toggleControlsPanel() {
+		isControlsPanelOpen = !isControlsPanelOpen;
+	}
+
 	// Mouse down event handler for object selection
+	// Replace the current onMouseDown function with this improved version
 	function onMouseDown(event: MouseEvent) {
+		// Don't handle selection if it's a right-click (context menu) or control key is pressed
+		if (event.button === 2 || event.ctrlKey) return;
+
 		// Calculate mouse position in normalized device coordinates
-		// (-1 to +1) for both components
 		const rect = container.getBoundingClientRect();
 		const x = event.clientX - rect.left;
 		const y = event.clientY - rect.top;
@@ -368,28 +678,48 @@
 		// Update the raycaster with the mouse position and camera
 		raycaster.setFromCamera(mouse, camera);
 
-		// Get selectable objects to test for intersection
-		const selectableObjects: THREE.Object3D[] = [];
+		// Create separate arrays for each object type
+		const slabObjects: THREE.Object3D[] = [];
+		const beamObjects: THREE.Object3D[] = [];
+		const wallObjects: THREE.Object3D[] = [];
+		const columnObjects: THREE.Object3D[] = [];
 
-		// Collect all beam, column, wall, and slab meshes
+		// Collect objects by type from visible stories
 		scene.traverse((object) => {
-			if (
-				object instanceof THREE.Mesh &&
-				(object.name.startsWith('Beam_') ||
-					object.name.startsWith('Column_') ||
-					object.name.startsWith('Wall_') ||
-					object.name.startsWith('Slab_'))
-			) {
-				// Only include objects from visible stories
+			if (object instanceof THREE.Mesh) {
 				const storyGroup = object.parent;
 				if (storyGroup && storyGroup.visible) {
-					selectableObjects.push(object);
+					if (object.name.startsWith('Column_')) {
+						columnObjects.push(object);
+					} else if (object.name.startsWith('Wall_')) {
+						wallObjects.push(object);
+					} else if (object.name.startsWith('Beam_')) {
+						beamObjects.push(object);
+					} else if (object.name.startsWith('Slab_')) {
+						slabObjects.push(object);
+					}
 				}
 			}
 		});
 
-		// Find intersections
-		const intersects = raycaster.intersectObjects(selectableObjects);
+		// Check intersections for each object type in order of priority
+		// Column has the highest priority, then Wall, Beam, and Slab last
+		let intersects = raycaster.intersectObjects(columnObjects);
+
+		// If no columns are intersected, try walls
+		if (intersects.length === 0) {
+			intersects = raycaster.intersectObjects(wallObjects);
+		}
+
+		// If no walls are intersected, try beams
+		if (intersects.length === 0) {
+			intersects = raycaster.intersectObjects(beamObjects);
+		}
+
+		// Finally, if nothing else is intersected, try slabs
+		if (intersects.length === 0) {
+			intersects = raycaster.intersectObjects(slabObjects);
+		}
 
 		if (intersects.length > 0) {
 			// Get the first intersected object
@@ -424,6 +754,16 @@
 
 			// Show properties panel
 			showProperties = true;
+
+			// Update the tree view selection
+			// Check if the tree view is visible and the reference is available
+			if (isTreeViewVisible && treeViewRef) {
+				// Call the selectElementByName method we added to the tree view
+				// This will highlight the element in the tree and scroll to it
+				if (typeof treeViewRef.selectElementByName === 'function') {
+					treeViewRef.selectElementByName(objectName);
+				}
+			}
 
 			// Notify parent component about selection
 			dispatch('objectSelected', {
@@ -468,131 +808,30 @@
 		const width = container.clientWidth;
 		const height = container.clientHeight;
 
-		console.log('Resizing to', width, 'x', height);
+		// Update camera aspect ratio
+		if (camera === perspectiveCamera) {
+			perspectiveCamera.aspect = width / height;
+			perspectiveCamera.updateProjectionMatrix();
+		} else if (camera === orthographicCamera) {
+			const aspectRatio = width / height;
+			const frustumSize = 1000;
+			orthographicCamera.left = (frustumSize * aspectRatio) / -2;
+			orthographicCamera.right = (frustumSize * aspectRatio) / 2;
+			orthographicCamera.top = frustumSize / 2;
+			orthographicCamera.bottom = frustumSize / -2;
+			orthographicCamera.updateProjectionMatrix();
+		}
 
-		camera.aspect = width / height;
-		camera.updateProjectionMatrix();
+		// Update renderer with the new size
 		renderer.setSize(width, height);
+
+		// Use a more conservative pixel ratio for better performance
 		renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-		// Re-render the scene
+		// Force a render to update the view immediately
 		if (scene) {
 			renderer.render(scene, camera);
 		}
-	}
-
-	// Define types for building model elements
-	interface Node {
-		ID: string;
-		X: string | number;
-		Y: string | number;
-	}
-
-	interface Column {
-		NodeID: string;
-		B1: string | number;
-		B2: string | number;
-		Label: string;
-		IsSupported?: boolean;
-	}
-
-	interface Beam {
-		NodeI: string;
-		NodeJ: string;
-		Width: string | number;
-		Depth: string | number;
-		Label: string;
-	}
-
-	interface Slab {
-		Nodes: string[];
-		Thickness: string | number;
-		Label: string;
-		CoatingLoad?: string | number;
-		LiveLoad?: string | number;
-	}
-
-	interface Spacing {
-		Points: Array<{
-			X: string | number;
-			Y: string | number;
-		}>;
-	}
-
-	interface Wall {
-		NodeI: string;
-		NodeJ: string;
-		Width: string | number;
-		Label: string;
-		IsSupported?: boolean;
-		Spacings?: Spacing[];
-		WallBeam?: string | number;
-		WallColumnStart?: string | number;
-		WallColumnEnd?: string | number;
-	}
-
-	interface Story {
-		Height: string | number;
-		Nodes?: Node[];
-		Columns?: Column[];
-		Beams?: Beam[];
-		Slabs?: Slab[];
-		Walls?: Wall[];
-		Label?: string; // The story label (name)
-	}
-
-	// Set camera to predefined views
-	export function setCubicView(viewType: 'top' | 'front' | 'side' | 'iso') {
-		if (!camera || !controls) return;
-
-		// Get the model center for camera targeting
-		const center = new THREE.Vector3(0, 0, 0);
-		const boundingBox = new THREE.Box3();
-
-		scene.traverse((object) => {
-			if (object instanceof THREE.Mesh) {
-				boundingBox.expandByObject(object);
-			}
-		});
-
-		boundingBox.getCenter(center);
-
-		// Calculate distance based on model size
-		const size = new THREE.Vector3();
-		boundingBox.getSize(size);
-		const maxDim = Math.max(size.x, size.y, size.z);
-		const fov = camera.fov * (Math.PI / 180);
-		let cameraDistance = Math.abs(maxDim / Math.sin(fov / 2)) * 1.2; // Add 20% for better view
-
-		// Set camera position based on view type
-		switch (viewType) {
-			case 'top': // Y-axis view (top-down)
-				camera.position.set(center.x, center.y + cameraDistance, center.z);
-				break;
-			case 'front': // Z-axis view
-				camera.position.set(center.x, center.y, center.z + cameraDistance);
-				break;
-			case 'side': // X-axis view
-				camera.position.set(center.x + cameraDistance, center.y, center.z);
-				break;
-			case 'iso': // Isometric view
-				camera.position.set(
-					center.x + cameraDistance * 0.7,
-					center.y + cameraDistance * 0.7,
-					center.z + cameraDistance * 0.7
-				);
-				break;
-		}
-
-		// Look at center of model
-		camera.lookAt(center);
-
-		// Update controls target
-		controls.target.copy(center);
-		controls.update();
-
-		// Render with new camera position
-		renderer.render(scene, camera);
 	}
 
 	// Draw building axes with labels in bubbles
@@ -801,6 +1040,24 @@
 		}
 	}
 
+	// Set camera to predefined views - updated to use ViewCube
+	export function setCubicView(
+		viewType: 'top' | 'front' | 'side' | 'back' | 'left' | 'bottom' | 'iso'
+	) {
+		if (viewCubeRef) {
+			const viewMap = {
+				top: 'top',
+				front: 'front',
+				side: 'right',
+				back: 'back',
+				left: 'left',
+				bottom: 'bottom',
+				iso: 'iso'
+			};
+			viewCubeRef.setView(viewMap[viewType]);
+		}
+	}
+
 	// Parse and render the building model from modelData
 	function renderBuildingModel() {
 		if (!modelData || !scene) {
@@ -875,6 +1132,11 @@
 
 			// Center camera on model
 			centerCameraOnModel();
+
+			// If we're in 2D mode, add borders to all objects
+			if (is2DMode) {
+				updateBorders(true);
+			}
 		} catch (error) {
 			console.error('Error rendering building model:', error);
 		}
@@ -898,6 +1160,69 @@
 
 		// Add back the lights and helpers
 		toKeep.forEach((obj) => scene.add(obj));
+
+		// Clear the edge objects array since we cleared the scene
+		edgeObjects.length = 0;
+	}
+
+	// Define types for building model elements
+	interface Node {
+		ID: string;
+		X: string | number;
+		Y: string | number;
+	}
+
+	interface Column {
+		NodeID: string;
+		B1: string | number;
+		B2: string | number;
+		Label: string;
+		IsSupported?: boolean;
+	}
+
+	interface Beam {
+		NodeI: string;
+		NodeJ: string;
+		Width: string | number;
+		Depth: string | number;
+		Label: string;
+	}
+
+	interface Slab {
+		Nodes: string[];
+		Thickness: string | number;
+		Label: string;
+		CoatingLoad?: string | number;
+		LiveLoad?: string | number;
+	}
+
+	interface Spacing {
+		Points: Array<{
+			X: string | number;
+			Y: string | number;
+		}>;
+	}
+
+	interface Wall {
+		NodeI: string;
+		NodeJ: string;
+		Width: string | number;
+		Label: string;
+		IsSupported?: boolean;
+		Spacings?: Spacing[];
+		WallBeam?: string | number;
+		WallColumnStart?: string | number;
+		WallColumnEnd?: string | number;
+	}
+
+	interface Story {
+		Height: string | number;
+		Nodes?: Node[];
+		Columns?: Column[];
+		Beams?: Beam[];
+		Slabs?: Slab[];
+		Walls?: Wall[];
+		Label?: string; // The story label (name)
 	}
 
 	// Render a single story of the building
@@ -914,23 +1239,25 @@
 		const storyGroup = new THREE.Group();
 		storyGroup.name = `Story_${storyIndex}`;
 
-		// Modified rendering order to prevent z-fighting:
-		// 1. Render slabs first (bottom visual layer, but rendered first)
+		// Use rendering order that matches the eMemberType2D priority:
+		// slab (1) -> beam (2) -> wall (3) -> [masonry wall (5)] -> column (6)
+
+		// 1. Render slabs first (bottom visual layer, has lowest renderOrder)
 		Slabs.forEach((slab) => {
 			renderSlab(slab, Nodes, baseHeight, Height, storyGroup);
 		});
 
-		// 2. Render walls next
-		Walls.forEach((wall) => {
-			renderWall(wall, Nodes, baseHeight, Height, storyGroup);
-		});
-
-		// 3. Render beams
+		// 2. Render beams second
 		Beams.forEach((beam) => {
 			renderBeam(beam, Nodes, baseHeight, Height, storyGroup);
 		});
 
-		// 4. Render columns last (top layer)
+		// 3. Render walls third
+		Walls.forEach((wall) => {
+			renderWall(wall, Nodes, baseHeight, Height, storyGroup);
+		});
+
+		// 4. Render columns last (top layer, has highest renderOrder)
 		Columns.forEach((column) => {
 			renderColumn(column, Nodes, baseHeight, Height, storyGroup);
 		});
@@ -1052,6 +1379,8 @@
 	}
 
 	// Render a slab - Improved implementation based on C# example with proper triangulation
+	// Replace the existing renderSlab function with this improved implementation:
+
 	function renderSlab(
 		slab: Slab,
 		nodes: Node[],
@@ -1065,9 +1394,7 @@
 
 		// Find the referenced nodes
 		const nodeObjects = slabNodes
-			.map((nodeId) => {
-				return nodes.find((n) => n.ID === nodeId);
-			})
+			.map((nodeId) => nodes.find((n) => n.ID === nodeId))
 			.filter((n): n is Node => n !== undefined);
 
 		if (nodeObjects.length < 3) return;
@@ -1081,8 +1408,7 @@
 
 		try {
 			// Create points for top and bottom faces
-			const topPoints: THREE.Vector3[] = [];
-			const bottomPoints: THREE.Vector3[] = [];
+			const points2D: Array<{ x: number; z: number }> = [];
 			const flatCoords: number[] = [];
 			const holeIndices: number[] = [];
 
@@ -1105,30 +1431,53 @@
 				x = centroidX + (x - centroidX) * insetFactor;
 				z = centroidZ + (z - centroidZ) * insetFactor;
 
-				// Top face points (at story height minus a tiny offset to prevent z-fighting with beams)
-				topPoints.push(new THREE.Vector3(x, baseHeight + storyHeightNum - 0.1, z));
-
-				// Bottom face points (offset by thickness plus a tiny offset)
-				bottomPoints.push(new THREE.Vector3(x, baseHeight + storyHeightNum - thickness + 0.1, z));
+				// Store 2D point for calculations
+				points2D.push({ x, z });
 
 				// Add to flat coordinates array for triangulation
 				flatCoords.push(x, z);
 			}
 
-			if (isClockwise(topPoints)) {
-				topPoints.reverse();
-				bottomPoints.reverse();
+			// Check if the polygon points are clockwise using improved shoelace formula
+			const isClockwise = calculateIsClockwise(points2D);
 
-				const tempCoords: number[] = [];
-				for (let i = flatCoords.length - 2; i >= 0; i -= 2) {
-					tempCoords.push(flatCoords[i], flatCoords[i + 1]);
+			// Earcut expects counter-clockwise vertices for exterior rings
+			// If our points are clockwise, we need to reverse them
+			let triangulationCoords = flatCoords;
+			if (isClockwise) {
+				// Build new coordinates in reversed order
+				triangulationCoords = [];
+				for (let i = points2D.length - 1; i >= 0; i--) {
+					triangulationCoords.push(points2D[i].x, points2D[i].z);
 				}
-				flatCoords.length = 0;
-				flatCoords.push(...tempCoords);
 			}
 
 			// Triangulate the polygon
-			const triangleIndices = earcut(flatCoords, holeIndices);
+			const triangleIndices = earcut(triangulationCoords, holeIndices);
+
+			// If triangulation failed or returned invalid results
+			if (!triangleIndices || triangleIndices.length < 3) {
+				console.error(`Failed to triangulate slab ${Label}`);
+				return;
+			}
+
+			// Create 3D points for geometry
+			const topPoints: THREE.Vector3[] = [];
+			const bottomPoints: THREE.Vector3[] = [];
+
+			// Build points in the correct order (if we had to reverse for triangulation)
+			// we still want to maintain the original data order
+			const orderedPoints = isClockwise ? [...points2D].reverse() : points2D;
+
+			orderedPoints.forEach((p) => {
+				// Top face points (at story height minus a tiny offset to prevent z-fighting)
+				topPoints.push(new THREE.Vector3(p.x, baseHeight + storyHeightNum - 0.1, p.z));
+
+				// Bottom face points (offset by thickness plus a tiny offset)
+				bottomPoints.push(
+					new THREE.Vector3(p.x, baseHeight + storyHeightNum - thickness + 0.1, p.z)
+				);
+			});
 
 			// Create geometry
 			const geometry = new THREE.BufferGeometry();
@@ -1136,7 +1485,7 @@
 			const indices: number[] = [];
 			const numPoints = topPoints.length;
 
-			// Add vertices to buffer
+			// Add vertices to buffer - first top face, then bottom face
 			for (const point of topPoints) {
 				vertices.push(point.x, point.y, point.z);
 			}
@@ -1145,27 +1494,36 @@
 				vertices.push(point.x, point.y, point.z);
 			}
 
-			// Add top face triangles
+			// Add top face triangles - need to account for possible reversal
 			for (let i = 0; i < triangleIndices.length; i += 3) {
-				indices.push(triangleIndices[i], triangleIndices[i + 1], triangleIndices[i + 2]);
+				// Map the earcut indices to our vertex indices
+				const a = triangleIndices[i];
+				const b = triangleIndices[i + 1];
+				const c = triangleIndices[i + 2];
+
+				// For consistent winding order
+				indices.push(a, b, c);
 			}
 
-			// Add bottom face triangles with reversed winding
+			// Add bottom face triangles with reversed winding for correct normal orientation
 			for (let i = 0; i < triangleIndices.length; i += 3) {
-				indices.push(
-					triangleIndices[i] + numPoints,
-					triangleIndices[i + 2] + numPoints,
-					triangleIndices[i + 1] + numPoints
-				);
+				const a = triangleIndices[i];
+				const b = triangleIndices[i + 1];
+				const c = triangleIndices[i + 2];
+
+				// Add with reverse winding (opposite to top face)
+				indices.push(a + numPoints, c + numPoints, b + numPoints);
 			}
 
-			// Add side faces
+			// Add side faces - connect adjacent vertices between top and bottom faces
 			for (let i = 0; i < numPoints; i++) {
 				const next = (i + 1) % numPoints;
-				// First triangle
-				indices.push(i, next, numPoints + i);
-				// Second triangle
-				indices.push(next, numPoints + next, numPoints + i);
+
+				// First triangle of quad
+				indices.push(i, next, i + numPoints);
+
+				// Second triangle of quad
+				indices.push(next, next + numPoints, i + numPoints);
 			}
 
 			// Set vertices and indices
@@ -1175,7 +1533,7 @@
 			// Calculate normals
 			geometry.computeVertexNormals();
 
-			// Create mesh with modified material
+			// Create mesh with material
 			const mesh = new THREE.Mesh(geometry, materials.slab);
 			mesh.castShadow = true;
 			mesh.receiveShadow = true;
@@ -1196,6 +1554,17 @@
 		}
 	}
 
+	// Improved helper function for clockwise detection using shoelace formula
+	function calculateIsClockwise(points: Array<{ x: number; z: number }>): boolean {
+		let area = 0;
+		for (let i = 0; i < points.length; i++) {
+			const j = (i + 1) % points.length;
+			// Use correct shoelace formula: (x2-x1)(y2+y1)
+			area += (points[j].x - points[i].x) * (points[j].z + points[i].z);
+		}
+		return area > 0;
+	}
+
 	// Helper function to check if points are in clockwise order
 	// Implementation matches the C# version provided
 	function isClockwise(points: THREE.Vector3[]): boolean {
@@ -1206,16 +1575,6 @@
 			sum += (next.x - current.x) * (next.z + current.z); // Using z as y in 2D projection
 		}
 		return sum > 0;
-	}
-
-	// Helper function for triangulation - converts Vector3 array to the flat format earcut needs
-	function pointsToEarcut(points: THREE.Vector3[]): number[] {
-		const result: number[] = [];
-		for (const point of points) {
-			// Only use X and Z for 2D triangulation (Y is up in THREE.js)
-			result.push(point.x, point.z);
-		}
-		return result;
 	}
 
 	// Render a wall
@@ -1656,7 +2015,7 @@
 		}
 	}
 
-	// Center camera on model
+	// Center camera on model - improved for better fitting
 	function centerCameraOnModel() {
 		if (!scene || !camera) return;
 
@@ -1681,21 +2040,47 @@
 		const size = new THREE.Vector3();
 		boundingBox.getSize(size);
 
-		// Calculate the distance to fit the entire model in view
-		const maxDim = Math.max(size.x, size.y, size.z);
-		const fov = camera.fov * (Math.PI / 180);
-		let cameraDistance = Math.abs(maxDim / Math.sin(fov / 2));
+		// Handle differently based on camera type and view mode
+		if (is2DMode) {
+			// 2D Mode - Orthographic camera
+			// Adjust the frustum size to fit the model with some padding
+			const padding = 1.2; // 20% padding around the model
+			const maxDim = Math.max(size.x, size.z) * padding;
+			const aspect = container.clientWidth / container.clientHeight;
 
-		// Set a minimum distance
-		cameraDistance = Math.max(cameraDistance, 100);
+			orthographicCamera.left = (-maxDim * aspect) / 2;
+			orthographicCamera.right = (maxDim * aspect) / 2;
+			orthographicCamera.top = maxDim / 2;
+			orthographicCamera.bottom = -maxDim / 2;
+			orthographicCamera.updateProjectionMatrix();
 
-		// Position the camera
-		const direction = new THREE.Vector3(1, 1, 1).normalize();
-		camera.position.copy(center).add(direction.multiplyScalar(cameraDistance));
-		camera.lookAt(center);
+			// Position the camera above the center of the model
+			orthographicCamera.position.set(center.x, 1000, center.z);
+			orthographicCamera.lookAt(center);
 
-		// Update controls
-		if (controls) {
+			// Update controls target
+			controls.target.set(center.x, 0, center.z);
+			controls.update();
+		} else {
+			// 3D Mode - Perspective camera
+			// Calculate the distance to fit the entire model in view
+			const fov = perspectiveCamera.fov * (Math.PI / 180);
+			const maxDim = Math.max(size.x, size.y, size.z);
+			let cameraDistance = Math.abs(maxDim / Math.sin(fov / 2)) * 1.1; // Add 10% margin
+
+			// Set a minimum distance
+			cameraDistance = Math.max(cameraDistance, 100);
+
+			// Calculate position based on current camera direction
+			const direction = new THREE.Vector3()
+				.subVectors(perspectiveCamera.position, controls.target)
+				.normalize();
+
+			// Position the camera
+			perspectiveCamera.position.copy(center).add(direction.multiplyScalar(cameraDistance));
+			perspectiveCamera.lookAt(center);
+
+			// Update controls
 			controls.target.copy(center);
 			controls.update();
 		}
@@ -1703,9 +2088,17 @@
 
 	// Export the resetView method to be called from parent components
 	export function resetView() {
-		if (!scene || !camera || !controls) return;
+		// Reset camera to default isometric view
+		if (is2DMode) {
+			// In 2D mode, reset the orthographic camera
+			orthographicCamera.position.set(0, 1000, 0);
+			orthographicCamera.lookAt(0, 0, 0);
+		} else {
+			// In 3D mode, reset the perspective camera to isometric view
+			setCubicView('iso');
+		}
 
-		// Center camera on model
+		// Re-center the model in view
 		centerCameraOnModel();
 	}
 
@@ -1719,10 +2112,20 @@
 		showProperties = !showProperties;
 	}
 
+	// Get formatted member type and label for property panel header
+	function getFormattedMemberLabel(): string {
+		if (!selectedObjectType || !selectedObjectProperties.Label) {
+			return 'Properties';
+		}
+
+		return `${selectedObjectType}-${selectedObjectProperties.Label}`;
+	}
+
 	// Lifecycle methods
 	onMount(() => {
 		initScene();
 		window.addEventListener('resize', handleResize);
+		document.addEventListener('fullscreenchange', handleFullscreenChange);
 
 		// Render model if data is available
 		if (modelData) {
@@ -1733,6 +2136,7 @@
 	onDestroy(() => {
 		window.removeEventListener('resize', handleResize);
 		container.removeEventListener('mousedown', onMouseDown);
+		document.removeEventListener('fullscreenchange', handleFullscreenChange);
 
 		if (animationId) {
 			cancelAnimationFrame(animationId);
@@ -1771,7 +2175,7 @@
 </script>
 
 <div
-	class="building-model-container"
+	class="building-model-container tooltip"
 	bind:this={container}
 	style="width: {width}; height: {height};"
 >
@@ -1781,35 +2185,44 @@
 		</div>
 	{/if}
 
-	<!-- View Controls -->
-	<div class="view-controls">
-		<button class="view-button" on:click={() => setCubicView('top')} title="Top View">
-			<span class="material-icons">arrow_upward</span>
-		</button>
-		<button class="view-button" on:click={() => setCubicView('front')} title="Front View">
-			<span class="material-icons">arrow_forward</span>
-		</button>
-		<button class="view-button" on:click={() => setCubicView('side')} title="Side View">
-			<span class="material-icons">arrow_right_alt</span>
-		</button>
-		<button class="view-button" on:click={() => setCubicView('iso')} title="Isometric View">
-			<span class="material-icons">3d_rotation</span>
-		</button>
-		<button class="view-button" on:click={resetView} title="Reset View">
-			<span class="material-icons">restart_alt</span>
+	<!-- Controls Panel Toggle Button -->
+	<div class="controls-toggle">
+		<button class="control-button" on:click={toggleControlsPanel} title="Toggle Controls">
+			<span class="material-icons">{isControlsPanelOpen ? 'menu_open' : 'menu'}</span>
 		</button>
 	</div>
 
-	<!-- Story Filter Toggle -->
-	<div class="story-filter-toggle">
-		<button
-			class="filter-button"
-			on:click={() => (showStoreyFilter = !showStoreyFilter)}
-			title="Story Filters"
-		>
-			<span class="material-icons">{showStoreyFilter ? 'filter_list_off' : 'filter_list'}</span>
-		</button>
-	</div>
+	<!-- Controls Panel -->
+	{#if isControlsPanelOpen}
+		<div class="controls-panel">
+			<div class="controls-group">
+				<button
+					class="control-button"
+					on:click={toggleViewMode}
+					title="Switch to {viewModeText} view"
+				>
+					<span class="material-icons">{is2DMode ? '3d_rotation' : 'view_in_ar'}</span>
+				</button>
+
+				<button
+					class="control-button"
+					on:click={() => (showStoreyFilter = !showStoreyFilter)}
+					title="Story Filters"
+					disabled={is2DMode}
+				>
+					<span class="material-icons">{showStoreyFilter ? 'filter_list_off' : 'filter_list'}</span>
+				</button>
+
+				<button class="control-button" on:click={resetView} title="Reset View">
+					<span class="material-icons">restart_alt</span>
+				</button>
+
+				<button class="control-button" on:click={toggleFullscreen} title="Toggle Fullscreen">
+					<span class="material-icons">{isFullscreen ? 'fullscreen_exit' : 'fullscreen'}</span>
+				</button>
+			</div>
+		</div>
+	{/if}
 
 	<!-- Story Filter Panel -->
 	{#if showStoreyFilter}
@@ -1842,107 +2255,50 @@
 		</div>
 	{/if}
 
-	<!-- Properties Panel -->
-	{#if showProperties && selectedObject}
-		<div class="properties-panel">
-			<div class="properties-header">
-				<h3>{selectedObjectType} Properties</h3>
-				<button class="close-button" on:click={deselectObject}>
+	<!-- Tree View Panel - MODIFIED: increased height, transparent background -->
+	{#if isTreeViewVisible}
+		<div class="tree-view-panel" class:with-properties={showProperties}>
+			<div class="panel-header">
+				<h3>
+					Building Elements
+					{#if is2DMode}
+						<span class="view-mode-indicator">2D Mode: Select a story to view</span>
+					{/if}
+				</h3>
+				<button class="close-button" on:click={toggleTreeView}>
 					<span class="material-icons">close</span>
 				</button>
 			</div>
-			<div class="properties-content">
-				{#if selectedObjectType === 'Beam'}
-					<div class="property">
-						<span class="property-label">Label:</span>
-						<span class="property-value">{selectedObjectProperties.Label || 'N/A'}</span>
-					</div>
-					<div class="property">
-						<span class="property-label">Width:</span>
-						<span class="property-value">{selectedObjectProperties.Width || 'N/A'} cm</span>
-					</div>
-					<div class="property">
-						<span class="property-label">Depth:</span>
-						<span class="property-value">{selectedObjectProperties.Depth || 'N/A'} cm</span>
-					</div>
-					<div class="property">
-						<span class="property-label">Length:</span>
-						<span class="property-value">{selectedObjectProperties.Length || 'N/A'} cm</span>
-					</div>
-				{:else if selectedObjectType === 'Column'}
-					<div class="property">
-						<span class="property-label">Label:</span>
-						<span class="property-value">{selectedObjectProperties.Label || 'N/A'}</span>
-					</div>
-					<div class="property">
-						<span class="property-label">B1:</span>
-						<span class="property-value">{selectedObjectProperties.B1 || 'N/A'} cm</span>
-					</div>
-					<div class="property">
-						<span class="property-label">B2:</span>
-						<span class="property-value">{selectedObjectProperties.B2 || 'N/A'} cm</span>
-					</div>
-					<div class="property">
-						<span class="property-label">Is Supported:</span>
-						<span class="property-value">{selectedObjectProperties.IsSupported ? 'Yes' : 'No'}</span
-						>
-					</div>
-				{:else if selectedObjectType === 'Wall'}
-					<div class="property">
-						<span class="property-label">Label:</span>
-						<span class="property-value">{selectedObjectProperties.Label || 'N/A'}</span>
-					</div>
-					<div class="property">
-						<span class="property-label">Width:</span>
-						<span class="property-value">{selectedObjectProperties.Width || 'N/A'} cm</span>
-					</div>
-					<div class="property">
-						<span class="property-label">Length:</span>
-						<span class="property-value">{selectedObjectProperties.Length || 'N/A'} cm</span>
-					</div>
-					<div class="property">
-						<span class="property-label">Is Supported:</span>
-						<span class="property-value">{selectedObjectProperties.IsSupported ? 'Yes' : 'No'}</span
-						>
-					</div>
-					{#if selectedObjectProperties.Openings}
-						<div class="property">
-							<span class="property-label">Openings:</span>
-							<span class="property-value">{selectedObjectProperties.Openings}</span>
-						</div>
-					{/if}
-				{:else if selectedObjectType === 'Slab'}
-					<div class="property">
-						<span class="property-label">Label:</span>
-						<span class="property-value">{selectedObjectProperties.Label || 'N/A'}</span>
-					</div>
-					<div class="property">
-						<span class="property-label">Thickness:</span>
-						<span class="property-value">{selectedObjectProperties.Thickness || 'N/A'} cm</span>
-					</div>
-					<div class="property">
-						<span class="property-label">Coating Load:</span>
-						<span class="property-value">{selectedObjectProperties.CoatingLoad || '0'} kN/m²</span>
-					</div>
-					<div class="property">
-						<span class="property-label">Live Load:</span>
-						<span class="property-value">{selectedObjectProperties.LiveLoad || '0'} kN/m²</span>
-					</div>
-				{:else}
-					<div class="property">
-						<span class="property-label">Type:</span>
-						<span class="property-value">{selectedObjectType}</span>
-					</div>
-					{#each Object.entries(selectedObjectProperties) as [key, value]}
-						<div class="property">
-							<span class="property-label">{key}:</span>
-							<span class="property-value">{value}</span>
-						</div>
-					{/each}
-				{/if}
-			</div>
+			<BuildingTreeView
+				bind:this={treeViewRef}
+				{modelData}
+				{scene}
+				{selectObject}
+				{deselectObject}
+				{is2DMode}
+				on:storySelected={(e) => selectStoryInTreeView(e.detail.storyName)}
+				width="100%"
+				height="calc(100% - 40px)"
+			/>
 		</div>
 	{/if}
+
+	<!-- Tree View Toggle Button - only show when tree view is hidden -->
+	{#if !isTreeViewVisible}
+		<div class="tree-view-toggle">
+			<button class="control-button" on:click={toggleTreeView} title="Show Tree View">
+				<span class="material-icons">account_tree</span>
+			</button>
+		</div>
+	{/if}
+
+	<BuildingPropertiesPanel
+		{selectedObjectType}
+		{selectedObjectProperties}
+		{showProperties}
+		{isTreeViewVisible}
+		width="250px"
+	/>
 </div>
 
 <style>
@@ -1970,86 +2326,129 @@
 		text-align: center;
 	}
 
-	/* View Controls */
-	.view-controls {
-		position: absolute;
-		top: 10px;
-		left: 10px;
-		display: flex;
-		flex-direction: column;
-		gap: 5px;
-		z-index: 100;
-	}
-
-	.view-button {
-		width: 32px;
-		height: 32px;
-		border-radius: 4px;
-		background-color: rgba(255, 255, 255, 0.9);
-		border: 1px solid #ddd;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		cursor: pointer;
-		transition: all 0.2s;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-	}
-
-	.view-button:hover {
-		background-color: rgba(255, 255, 255, 1);
-		transform: translateY(-1px);
-		box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
-	}
-
-	.view-button .material-icons {
-		font-size: 16px;
-		color: #333;
-	}
-
-	/* Story Filter Toggle */
-	.story-filter-toggle {
+	/* Controls Toggle Button */
+	.controls-toggle {
 		position: absolute;
 		top: 10px;
 		right: 10px;
 		z-index: 100;
 	}
 
-	.filter-button {
+	.control-button {
 		width: 32px;
 		height: 32px;
-		border-radius: 4px;
+		border-radius: 50%;
 		background-color: rgba(255, 255, 255, 0.9);
 		border: 1px solid #ddd;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		cursor: pointer;
-		transition: all 0.2s;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+		transition: all 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+		box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
 	}
 
-	.filter-button:hover {
+	.control-button:hover {
 		background-color: rgba(255, 255, 255, 1);
-		transform: translateY(-1px);
-		box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
+		transform: scale(1.1);
+		box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
 	}
 
-	.filter-button .material-icons {
+	.control-button:active {
+		transform: scale(0.9);
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+	}
+
+	.control-button .material-icons {
 		font-size: 16px;
 		color: #333;
+	}
+
+	/* Controls Panel */
+	.controls-panel {
+		position: absolute;
+		top: 52px;
+		right: 10px;
+		background-color: white;
+		border-radius: 8px;
+		box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+		z-index: 99;
+		overflow: hidden;
+		padding: 8px 6px;
+		animation: slideIn 0.3s ease-out;
+	}
+
+	@keyframes slideIn {
+		from {
+			opacity: 0;
+			transform: translateY(-10px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	.controls-group {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.controls-group .control-button {
+		width: 32px;
+		height: 32px;
+		border-radius: 50%;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+	}
+
+	.controls-group .control-button:hover {
+		transform: scale(1.1);
+		box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
+	}
+
+	.controls-group .control-button:active {
+		transform: scale(0.9);
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 	}
 
 	/* Story Filter Panel */
 	.story-filter-panel {
 		position: absolute;
-		top: 50px;
+		top: 52px;
 		right: 10px;
 		background-color: white;
 		border-radius: 8px;
-		box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
-		width: 200px;
-		z-index: 100;
+		box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+		width: 180px;
+		z-index: 99;
 		overflow: hidden;
+		animation: fadeIn 0.25s ease-out;
+	}
+
+	.view-mode-indicator {
+		font-size: 0.6rem;
+		font-weight: normal;
+		color: #5c6b7e;
+		/* margin-left: 6px; */
+		/* padding: 2px 6px; */
+		background-color: rgba(241, 245, 249, 0.7);
+		border-radius: 4px;
+		white-space: nowrap;
+	}
+
+	@keyframes fadeIn {
+		from {
+			opacity: 0;
+			transform: translateY(-10px) scale(0.95);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0) scale(1);
+		}
 	}
 
 	.filter-header {
@@ -2063,7 +2462,7 @@
 
 	.filter-header h3 {
 		margin: 0;
-		font-size: 14px;
+		font-size: 13px;
 		font-weight: 600;
 		color: #334155;
 	}
@@ -2071,28 +2470,33 @@
 	.close-button {
 		width: 24px;
 		height: 24px;
-		border-radius: 4px;
+		border-radius: 50%;
 		background-color: transparent;
 		border: none;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		cursor: pointer;
-		transition: background-color 0.2s;
+		transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 	}
 
 	.close-button:hover {
 		background-color: rgba(0, 0, 0, 0.05);
+		transform: rotate(90deg);
+	}
+
+	.close-button:active {
+		transform: scale(0.9) rotate(90deg);
 	}
 
 	.close-button .material-icons {
-		font-size: 18px;
+		font-size: 16px;
 		color: #64748b;
 	}
 
 	.filter-options {
-		padding: 8px;
-		max-height: 300px;
+		padding: 6px;
+		max-height: 250px;
 		overflow-y: auto;
 	}
 
@@ -2112,68 +2516,66 @@
 
 	.filter-option input {
 		cursor: pointer;
+		width: 14px;
+		height: 14px;
 	}
 
 	.filter-option span {
-		font-size: 14px;
+		font-size: 12px;
 		color: #334155;
 	}
 
-	/* Properties Panel */
-	.properties-panel {
+	/* MODIFIED: Tree View Panel - Increased height to 70% of viewer, transparent background */
+	.tree-view-panel {
 		position: absolute;
-		bottom: 10px;
-		right: 10px;
-		background-color: white;
+		top: 10px;
+		left: 10px;
+		background-color: rgba(255, 255, 255, 0.8); /* Transparent background */
 		border-radius: 8px;
-		box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+		box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
 		width: 250px;
+		height: 70vh; /* Increased height to 70% of viewport */
+		max-height: 70%; /* Also limit by percentage of container */
 		z-index: 100;
 		overflow: hidden;
+		display: flex;
+		flex-direction: column;
+		/* animation: slideInLeft 0.3s ease-out; */
+		backdrop-filter: blur(5px); /* Adds a nice blur effect for better readability */
 	}
 
-	.properties-header {
+	.tree-view-toggle {
+		position: absolute;
+		top: 10px;
+		left: 10px;
+		z-index: 100;
+	}
+
+	.panel-header {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
 		padding: 8px 12px;
-		background-color: #f1f5f9;
-		border-bottom: 1px solid #e2e8f0;
+		background-color: rgba(241, 245, 249, 0.7); /* Semi-transparent header */
+		border-bottom: 1px solid rgba(226, 232, 240, 0.8);
 	}
 
-	.properties-header h3 {
+	.panel-header h3 {
 		margin: 0;
-		font-size: 14px;
+		font-size: 0.8rem;
 		font-weight: 600;
 		color: #334155;
 	}
 
-	.properties-content {
-		padding: 12px;
-		max-height: 300px;
-		overflow-y: auto;
-	}
-
-	.property {
-		display: flex;
-		justify-content: space-between;
-		padding: 4px 0;
-		border-bottom: 1px solid #f1f5f9;
-	}
-
-	.property:last-child {
-		border-bottom: none;
-	}
-
-	.property-label {
-		font-size: 13px;
-		font-weight: 500;
-		color: #64748b;
-	}
-
-	.property-value {
-		font-size: 13px;
-		color: #334155;
+	@keyframes slideInLeft {
+		from {
+			opacity: 0;
+			transform: translateX(-20px);
+		}
+		to {
+			opacity: 1;
+			transform: translateX(0);
+		}
 	}
 
 	:global(:fullscreen) .building-model-container {

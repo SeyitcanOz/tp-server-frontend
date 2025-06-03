@@ -247,7 +247,7 @@
 	</div>
 
 	{#if isExpanded}
-		<div class="model-content" transition:slide={{ duration: 300 }}>
+		<div class="model-content" in:fade={{ duration: 200 }}>
 			{#if showPerformanceView && resultsData.length > 0}
 				<!-- Performance View with Filters -->
 				<div class="performance-view" in:fade={{ duration: 200 }}>
@@ -273,14 +273,6 @@
 						</div>
 					{:else if modelData}
 						<div class="model-viewer-wrapper">
-							<div class="model-controls">
-								<button class="action-button" on:click={resetView} title="Reset View">
-									<span class="material-icons">cached</span>
-								</button>
-								<button class="action-button" on:click={toggleFullscreen} title="Fullscreen">
-									<span class="material-icons">fullscreen</span>
-								</button>
-							</div>
 							<div class="model-container" bind:this={viewerContainer}>
 								<BuildingModelViewer
 									{modelData}
@@ -308,14 +300,6 @@
 						</div>
 					{:else if modelData}
 						<div class="model-viewer-wrapper">
-							<div class="model-controls">
-								<button class="action-button" on:click={resetView} title="Reset View">
-									<span class="material-icons">cached</span>
-								</button>
-								<button class="action-button" on:click={toggleFullscreen} title="Fullscreen">
-									<span class="material-icons">fullscreen</span>
-								</button>
-							</div>
 							<div class="model-container" bind:this={viewerContainer}>
 								<BuildingModelViewer
 									{modelData}
@@ -383,9 +367,8 @@
 	}
 
 	.icon-button.active {
-		background-color: #3b82f6;
-		border-color: #3b82f6;
-		color: white;
+		background-color: #f1f5f9;
+		color: #64748b;
 	}
 
 	.icon-button .material-icons {
@@ -404,39 +387,6 @@
 		position: relative;
 		border-radius: 8px;
 		overflow: hidden;
-	}
-
-	.model-controls {
-		position: absolute;
-		top: 0rem;
-		right: 0.75rem;
-		display: flex;
-		align-items: center;
-		gap: 0.25rem;
-		z-index: 10;
-	}
-
-	.action-button {
-		width: 24px;
-		height: 24px;
-		border-radius: 3px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		text-decoration: none;
-		transition: all 0.15s ease;
-		background-color: white;
-		border: none;
-		cursor: pointer;
-	}
-
-	.action-button .material-icons {
-		font-size: 0.9rem;
-		color: black;
-	}
-
-	.action-button:hover {
-		background-color: #e2e8f0;
 	}
 
 	.model-container {

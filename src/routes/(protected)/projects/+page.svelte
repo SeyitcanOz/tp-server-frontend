@@ -7,7 +7,8 @@
 	import { fade, fly, scale } from 'svelte/transition';
 	import DeleteConfirmationModal from '$lib/components/DeleteConfirmationModal.svelte';
 	import CreateProjectForm from '$lib/components/CreateProjectForm.svelte';
-  
+	import EditProjectForm from '$lib/components/EditProjectForm.svelte';
+
 	// Variables for filtering and state
 	let projects: ProjectSummary[] = [];
 	let isLoading = true;
@@ -18,132 +19,153 @@
 	let totalCount = 0;
 	let searchQuery = '';
 	let userMap: Record<string, string> = {}; // Maps user IDs to usernames
-	let viewMode: 'grid' | 'list' = 'grid';
+	let viewMode: 'grid' | 'list' = 'list';
 	let sortOrder: 'name' | 'updated' | 'version' = 'name';
 	let modellingTypes: string[] = [];
 	let selectedModellingType = '';
 
-	let showCreateProjectModal = false; // new
-  
+	let showCreateProjectModal = false; //To control visibility of new project modal
+
+	let showEditProjectModal = false; // To control visibility of edit modal
+	let projectToEdit: string | null = null; // To track which project to edit
+
 	// For tracking which dropdown is open
 	let openMenuId: string | null = null;
 	let openDropdown: 'model' | 'user' | 'sort' | null = null;
-  
+
 	// Admin-specific properties
 	let userFilter: string | null = null; // For admin to filter by user
 	let allUsers: { id: string; username: string }[] = []; // List of users for admin to filter by
 	let isLoadingUsers = false;
-  
+
 	// For more visual data
 	let projectsWithStats: (ProjectSummary & {
-	  color: string;
-	  icon: string;
-	  ownerName: string;
-	  isOwner: boolean;
-	  dateFormatted: string;
-	  statusBadge: { text: string; color: string };
+		color: string;
+		icon: string;
+		ownerName: string;
+		isOwner: boolean;
+		dateFormatted: string;
+		statusBadge: { text: string; color: string };
 	})[] = [];
-  
+
 	// Delete confirmation modal state
 	let showDeleteModal = false;
 	let projectToDelete: string | null = null;
 	let isDeleting = false;
 	let deleteError: string | null = null;
-  
+
 	// Pagination info
 	let hasNextPage = false;
 	let hasPreviousPage = false;
-  
+
+	// Function to handle edit project
+	function handleEditProject(projectId: string) {
+		projectToEdit = projectId;
+		showEditProjectModal = true;
+	}
+
+	// Function to close edit modal
+	function closeEditModal() {
+		showEditProjectModal = false;
+		projectToEdit = null;
+	}
+
+	// Function to handle project saved
+	function handleProjectSaved() {
+		// Reload projects after save
+		loadProjects();
+	}
+
 	// Function to handle delete project
 	function handleDeleteProject(projectId: string) {
-	  projectToDelete = projectId;
-	  showDeleteModal = true;
-	  deleteError = null;
+		projectToDelete = projectId;
+		showDeleteModal = true;
+		deleteError = null;
 	}
-  
+
 	// Close delete modal
 	function closeDeleteModal() {
-	  showDeleteModal = false;
-	  projectToDelete = null;
-	}
-  
-	// Confirm and execute delete
-	async function confirmDelete() {
-	  if (!projectToDelete) return;
-  
-	  isDeleting = true;
-	  try {
-		await projectService.deleteProject(projectToDelete);
-		// Close the modal and refresh projects
 		showDeleteModal = false;
 		projectToDelete = null;
-		// Reload projects list
-		await loadProjects();
-	  } catch (err) {
-		console.error('Error deleting project:', err);
-		if (err && typeof err === 'object' && 'response' in err) {
-		  const axiosError = err as { response?: { data?: { message?: string } } };
-		  deleteError =
-			axiosError.response?.data?.message || 'Failed to delete project. Please try again.';
-		} else {
-		  deleteError = 'Failed to delete project. Please try again.';
-		}
-	  } finally {
-		isDeleting = false;
-	  }
 	}
-  
+
+	// Confirm and execute delete
+	async function confirmDelete() {
+		if (!projectToDelete) return;
+
+		isDeleting = true;
+		try {
+			await projectService.deleteProject(projectToDelete);
+			// Close the modal and refresh projects
+			showDeleteModal = false;
+			projectToDelete = null;
+			// Reload projects list
+			await loadProjects();
+		} catch (err) {
+			console.error('Error deleting project:', err);
+			if (err && typeof err === 'object' && 'response' in err) {
+				const axiosError = err as { response?: { data?: { message?: string } } };
+				deleteError =
+					axiosError.response?.data?.message || 'Failed to delete project. Please try again.';
+			} else {
+				deleteError = 'Failed to delete project. Please try again.';
+			}
+		} finally {
+			isDeleting = false;
+		}
+	}
+
 	// Function to load projects with search, sort, and filter
 	async function loadProjects() {
-	  isLoading = true;
-	  loadingError = null;
-  
-	  try {
-		// Convert our sortOrder to the API's sortBy parameter
-		let sortBy: string;
-  
-		switch (sortOrder) {
-		  case 'name':
-			sortBy = 'projectName';
-			break;
-		  case 'version':
-			sortBy = 'currentVersion';
-			break;
-		  case 'updated':
-		  default:
-			sortBy = 'updatedAt';
-			break;
+		isLoading = true;
+		loadingError = null;
+
+		try {
+			// Convert our sortOrder to the API's sortBy parameter
+			let sortBy: string;
+
+			switch (sortOrder) {
+				case 'name':
+					sortBy = 'projectName';
+					break;
+				case 'version':
+					sortBy = 'currentVersion';
+					break;
+				case 'updated':
+				default:
+					sortBy = 'updatedAt';
+					break;
+			}
+
+			// Get projects with pagination, filtering, and sorting
+			const response = await projectService.getProjects(currentPage, pageSize, {
+				userId: userFilter || undefined,
+				searchTerm: searchQuery || undefined,
+				modellingType: selectedModellingType || undefined,
+				sortBy,
+				sortDescending: false
+			});
+
+			projects = response.items;
+			totalPages = response.totalPages;
+			totalCount = response.totalCount;
+			hasNextPage = response.hasNextPage;
+			hasPreviousPage = response.hasPreviousPage;
+
+			// Collect all unique creator IDs
+			const creatorIds = [...new Set(projects.map((p) => p.createdBy))];
+
+			// Load user details for display
+			await loadUserDetails(creatorIds);
+
+			// Enhance projects with visual data
+			enhanceProjectsWithVisualData();
+		} catch (err) {
+			console.error('Error fetching projects:', err);
+			loadingError = 'Failed to load projects. Please try again.';
+		} finally {
+			isLoading = false;
 		}
-  
-		// Get projects with pagination, filtering, and sorting
-		const response = await projectService.getProjects(currentPage, pageSize, {
-		  userId: userFilter || undefined,
-		  searchTerm: searchQuery || undefined,
-		  modellingType: selectedModellingType || undefined,
-		  sortBy,
-		  sortDescending: false
-		});
-  
-		projects = response.items;
-		totalPages = response.totalPages;
-		totalCount = response.totalCount;
-		hasNextPage = response.hasNextPage;
-		hasPreviousPage = response.hasPreviousPage;
-  
-		// Collect all unique creator IDs
-		const creatorIds = [...new Set(projects.map((p) => p.createdBy))];
-  
-		// Load user details for display
-		await loadUserDetails(creatorIds);
-  
-		// Enhance projects with visual data
-		enhanceProjectsWithVisualData();
-	  } catch (err) {
-		console.error('Error fetching projects:', err);
-		loadingError = 'Failed to load projects. Please try again.';
-	  } finally {
-		isLoading = false;
-	  }
 	}
 
 	// Load modelling types for filter dropdown
@@ -445,26 +467,26 @@
 	}
 
 	onMount(() => {
-    // Load modelling types for filter dropdown
-    loadModellingTypes();
+		// Load modelling types for filter dropdown
+		loadModellingTypes();
 
-    // Initial load of projects
-    loadProjects();
+		// Initial load of projects
+		loadProjects();
 
-    // Check if the user prefers grid or list from localStorage
-    const savedViewMode = localStorage.getItem('projectsViewMode');
-    if (savedViewMode === 'grid' || savedViewMode === 'list') {
-      viewMode = savedViewMode;
-    }
+		// Check if the user prefers grid or list from localStorage
+		const savedViewMode = localStorage.getItem('projectsViewMode');
+		if (savedViewMode === 'grid' || savedViewMode === 'list') {
+			viewMode = savedViewMode;
+		}
 
-    // Add click listener to close dropdowns when clicking outside
-    document.addEventListener('click', closeAllDropdowns);
+		// Add click listener to close dropdowns when clicking outside
+		document.addEventListener('click', closeAllDropdowns);
 
-    // Clean up event listener on component unmount
-    return () => {
-      document.removeEventListener('click', closeAllDropdowns);
-    };
-  });
+		// Clean up event listener on component unmount
+		return () => {
+			document.removeEventListener('click', closeAllDropdowns);
+		};
+	});
 </script>
 
 <svelte:head>
@@ -476,24 +498,24 @@
 
 <div class="page-container">
 	<header class="page-header">
-	  <div class="header-content">
-		<div>
-		  <h1>Projects</h1>
-		  <p class="text-muted">
-			{#if totalCount > 0}
-			  Showing {projects.length} of {totalCount} project{totalCount !== 1 ? 's' : ''}
-			{:else}
-			  Manage your engineering projects
-			{/if}
-		  </p>
+		<div class="header-content">
+			<div>
+				<h1>Projects</h1>
+				<p class="text-muted">
+					{#if totalCount > 0}
+						Showing {projects.length} of {totalCount} project{totalCount !== 1 ? 's' : ''}
+					{:else}
+						Manage your engineering projects
+					{/if}
+				</p>
+			</div>
+			<div class="header-actions">
+				<button class="btn-primary" on:click={() => (showCreateProjectModal = true)}>
+					<span class="material-icons">add</span>
+					Create Project
+				</button>
+			</div>
 		</div>
-		<div class="header-actions">
-			<button class="btn-primary" on:click={() => showCreateProjectModal = true}>
-			  <span class="material-icons">add</span>
-			  Create Project
-			</button>
-		  </div>
-	  </div>
 	</header>
 
 	<div class="controls-container">
@@ -823,7 +845,7 @@
 				</div>
 			{:else}
 				<p>You don't have any projects yet. Create your first project to get started.</p>
-				<button class="btn-primary" on:click={() => showCreateProjectModal = true}>
+				<button class="btn-primary" on:click={() => (showCreateProjectModal = true)}>
 					Create First Project
 				</button>
 			{/if}
@@ -870,10 +892,10 @@
 								{#if openMenuId === project.id}
 									<div class="menu-dropdown">
 										{#if project.isOwner || isAdmin}
-											<a href={`/projects/${project.id}/edit`} class="menu-item">
+											<button class="menu-item" on:click={() => handleEditProject(project.id)}>
 												<span class="material-icons">edit</span>
 												<span>Edit</span>
-											</a>
+											</button>
 										{/if}
 										{#if isAdmin}
 											<button
@@ -949,13 +971,14 @@
 								</a>
 
 								{#if project.isOwner || isAdmin}
-									<a
-										href={`/projects/${project.id}/edit`}
+									<button
 										class="action-button list-tooltip"
+										style="border: none;"
 										data-tooltip="Edit Project"
+										on:click={() => handleEditProject(project.id)}
 									>
 										<span class="material-icons">edit</span>
-									</a>
+									</button>
 								{/if}
 								{#if isAdmin}
 									<button
@@ -1075,32 +1098,43 @@
 		{/if}
 	{/if}
 
+	<!-- Project Edit Modal -->
+	{#if showEditProjectModal && projectToEdit}
+		<EditProjectForm
+			projectId={projectToEdit}
+			onClose={closeEditModal}
+			on:saved={handleProjectSaved}
+			on:unauthorized={() => {
+				// Handle unauthorized - perhaps redirect to login
+				closeEditModal();
+			}}
+		/>
+	{/if}
 	<!-- Delete Confirmation Modal -->
 	{#if showDeleteModal}
-    <DeleteConfirmationModal
-      isOpen={showDeleteModal}
-      title="Delete Project"
-      message="Are you sure you want to delete this project? All versions and associated data will be permanently removed."
-      itemName={projectToDelete
-        ? projectsWithStats.find((p) => p.id === projectToDelete)?.projectName
-        : ''}
-      {isDeleting}
-      error={deleteError}
-      on:confirm={confirmDelete}
-      on:cancel={closeDeleteModal}
-    />
-  {/if}
+		<DeleteConfirmationModal
+			isOpen={showDeleteModal}
+			title="Delete Project"
+			message="Are you sure you want to delete this project? All versions and associated data will be permanently removed."
+			itemName={projectToDelete
+				? projectsWithStats.find((p) => p.id === projectToDelete)?.projectName
+				: ''}
+			{isDeleting}
+			error={deleteError}
+			on:confirm={confirmDelete}
+			on:cancel={closeDeleteModal}
+		/>
+	{/if}
 
-  <CreateProjectForm 
-  isOpen={showCreateProjectModal} 
-  on:close={() => showCreateProjectModal = false}
-  on:projectCreated={() => {
-    // Will be called when a project is created, even if user stays in modal
-    loadProjects();
-  }}
-  on:refreshProjects={() => loadProjects()}
-/>
-
+	<CreateProjectForm
+		isOpen={showCreateProjectModal}
+		on:close={() => (showCreateProjectModal = false)}
+		on:projectCreated={() => {
+			// Will be called when a project is created, even if user stays in modal
+			loadProjects();
+		}}
+		on:refreshProjects={() => loadProjects()}
+	/>
 </div>
 
 <style>
@@ -1127,7 +1161,7 @@
 		margin: 0;
 		color: #1e3a8a;
 		font-weight: 500;
-  }
+	}
 
 	.text-muted {
 		color: #64748b;
@@ -1141,7 +1175,8 @@
 	}
 
 	.btn-primary {
-		background-color: #5c9fff;
+		/* background-color: #5c9fff; */
+		background: linear-gradient(135deg, #4a89e8 0%, #5c9fff 100%);
 		color: white;
 		padding: 0.35rem 0.7rem;
 		border-radius: 3px;
@@ -1158,7 +1193,7 @@
 	}
 
 	.btn-primary:hover {
-		background-color: #1d4ed8;
+		background: linear-gradient(135deg, #4a89e8 0%, #1d4ed8 100%);
 	}
 
 	.btn-secondary {
@@ -1459,6 +1494,7 @@
 	.view-toggle-btn.active {
 		background-color: #5c9fff;
 		color: white;
+		background: linear-gradient(135deg, #4a89e8 0%, #5c9fff 100%);
 	}
 
 	.view-toggle-btn .material-icons {

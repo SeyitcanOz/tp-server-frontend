@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { slide } from 'svelte/transition';
+	import { slide, fade } from 'svelte/transition';
 	import { page } from '$app/stores';
 	import { user } from '$lib/stores/auth';
 	import userService from '$lib/services/user';
@@ -599,7 +599,7 @@
 						{/if}
 					</div>
 				{:else}
-					<div class="no-results" transition:slide={{ duration: 300 }}>
+					<div class="no-results" in:fade={{ duration: 200 }}>
 						<span class="material-icons no-results-icon">analytics</span>
 						<p>No results data available for this version</p>
 					</div>
@@ -625,7 +625,13 @@
 	.header-content {
 		display: flex;
 		justify-content: space-between;
-		align-items: flex-start;
+		align-items: center;
+		margin-bottom: 1rem;
+	}
+
+	.header-left {
+		display: flex;
+		align-items: center;
 	}
 
 	.breadcrumbs {
@@ -653,6 +659,7 @@
 		margin: 0;
 		color: #1e3a8a;
 		font-weight: 500;
+		line-height: 1.2;
 	}
 
 	/* Loading & Error Styles */
@@ -935,21 +942,33 @@
 	}
 
 	.btn {
-		padding: 0.5rem 1rem;
 		border-radius: 4px;
 		font-weight: 500;
-		cursor: pointer;
 		display: inline-flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.3rem;
 		transition: all 0.2s;
-		border: none;
-		font-size: 0.85rem;
+	}
+
+	/* Unified button styles for Previous, Next, and Set as Current */
+	.btn-nav,
+	.btn-primary {
+		padding: 0.4rem 0.8rem;
+		font-size: 0.8rem;
+		min-width: 100px;
+		height: 32px;
+		justify-content: center;
+	}
+
+	.btn-nav .material-icons,
+	.btn-primary .material-icons {
+		font-size: 1rem;
 	}
 
 	.btn-primary {
 		background-color: #5c9fff;
 		color: white;
+		border: none;
 	}
 
 	.btn-primary:hover:not(:disabled) {
@@ -973,6 +992,12 @@
 
 	.btn-nav {
 		white-space: nowrap;
+		background-color: #f8fafc;
+		border: 1px solid #e2e8f0;
+	}
+
+	.btn-nav:hover:not(:disabled) {
+		background-color: #f1f5f9;
 	}
 
 	/* Results Section */
@@ -1255,28 +1280,18 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.4rem;
-		padding: 0.5rem 1rem;
 		border-radius: 4px;
-		font-size: 0.85rem;
 		font-weight: 500;
 		cursor: pointer;
 		transition: all 0.15s ease;
-	}
-
-	.btn-primary {
-		background-color: #5c9fff;
-		color: white;
-		border: none;
-	}
-
-	.btn-primary:hover {
-		background-color: #4a89e8;
 	}
 
 	.btn-secondary {
 		background-color: #f1f5f9;
 		color: #334155;
 		border: 1px solid #e2e8f0;
+		padding: 0.5rem 1rem;
+		font-size: 0.85rem;
 	}
 
 	.btn-secondary:hover {
@@ -1338,6 +1353,11 @@
 			text-align: center;
 			margin: 0;
 		}
+
+		.btn-nav,
+		.btn-primary {
+			min-width: 90px;
+		}
 	}
 
 	@media (max-width: 576px) {
@@ -1349,6 +1369,11 @@
 		.btn {
 			width: 100%;
 			justify-content: center;
+		}
+
+		.btn-nav,
+		.btn-primary {
+			min-width: 100%;
 		}
 	}
 </style>
